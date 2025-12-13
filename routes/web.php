@@ -129,6 +129,26 @@ Route::middleware('auth')->group(function () {
             Route::post('/pos/resolve', [\App\Http\Controllers\Erp\PosController::class, 'resolveProduct']);
             Route::post('/pos/sale', [\App\Http\Controllers\Erp\PosController::class, 'confirmSale']);
             Route::post('/pos/sale/{id}/rollback', [\App\Http\Controllers\Erp\PosController::class, 'rollbackSale']);
+            
+            // --------------------
+            // Inventario
+            // --------------------
+            Route::get('/inventory/stats', [\App\Http\Controllers\Erp\InventoryController::class, 'stats']);
+            Route::get('/inventory/balances', [\App\Http\Controllers\Erp\InventoryController::class, 'balances']);
+            Route::get('/inventory/movements', [\App\Http\Controllers\Erp\InventoryController::class, 'movements']);
+            Route::get('/inventory/sold-today', [\App\Http\Controllers\Erp\InventoryController::class, 'soldTodayItems']);
+            Route::post('/inventory/requisitions/generate', [\App\Http\Controllers\Erp\InventoryController::class, 'generateRequisition']);
+
+            // --------------------
+            // Compras
+            // --------------------
+            Route::get('/purchases/requisitions', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexRequisitions']);
+            Route::get('/purchases/requisitions/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'showRequisition']);
+            Route::post('/purchases/requisitions/{id}/convert', [\App\Http\Controllers\Erp\PurchasesController::class, 'generateOrderFromRequisition']);
+            Route::get('/purchases/orders', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexOrders']);
+            Route::get('/purchases/orders/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'showOrder']);
+            Route::post('/purchases/orders/{id}/receive', [\App\Http\Controllers\Erp\PurchasesController::class, 'receiveOrder']);
+
         });
 
         // Rutas Web ERP (Print, Exports, etc)
@@ -137,7 +157,7 @@ Route::middleware('auth')->group(function () {
         // SPA shell (Catch-all for React Router) - DEFINE LAST
         Route::get('/{any?}', function () {
             return view('erp.index');
-        })->where('any', '.*')->name('erp.index');
+        })->where('any', '^(?!api).*$')->name('erp.index');
 
     });
 });

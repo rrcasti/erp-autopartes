@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class StockMovement extends Model
+class StockBalance extends Model
 {
     use HasFactory;
 
@@ -13,22 +13,13 @@ class StockMovement extends Model
         'product_id',
         'variation_id',
         'warehouse_id',
-        'user_id',
-        'type',
-        'quantity',
-        'qty_before',
-        'qty_after',
-        'unit_cost_snapshot',
-        'sale_id',
-        'reference_description',
-        'happened_at',
+        'on_hand',
+        'reserved',
     ];
 
     protected $casts = [
-        'happened_at' => 'datetime',
-        'qty_before' => 'decimal:2',
-        'qty_after' => 'decimal:2',
-        'quantity' => 'decimal:2',
+        'on_hand' => 'decimal:2',
+        'reserved' => 'decimal:2',
     ];
 
     public function product()

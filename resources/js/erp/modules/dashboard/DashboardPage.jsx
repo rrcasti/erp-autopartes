@@ -1,6 +1,17 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 export const DashboardPage = () => {
+    const [stats, setStats] = useState({ sales_today: 0, low_stock_count: 0 });
+
+    useEffect(() => {
+        fetch('/erp/api/inventory/stats')
+            .then(r => r.json())
+            .then(data => {
+                if(data.sales_today !== undefined) setStats(data);
+            })
+            .catch(err => console.error('Error cargando stats', err));
+    }, []);
+
     return (
         <div className="h-full flex flex-col gap-4 text-sm">
             {/* Encabezado */}
@@ -9,8 +20,7 @@ export const DashboardPage = () => {
                     Dashboard
                 </h1>
                 <p className="text-xs text-slate-700 dark:text-slate-300">
-                    Panel principal de RepuestosKm21 ERP. Desde acá vas a poder ver un resumen de
-                    ventas, stock y alertas críticas.
+                    Resumen de operación en tiempo real.
                 </p>
             </div>
 
@@ -22,11 +32,8 @@ export const DashboardPage = () => {
                         Ventas del día
                     </div>
                     <div className="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-                        $ 0,00
+                        {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(stats.sales_today)}
                     </div>
-                    <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
-                        Más adelante, acá vamos a mostrar las ventas reales del ERP.
-                    </p>
                 </div>
 
                 {/* Productos con stock bajo */}
@@ -35,10 +42,10 @@ export const DashboardPage = () => {
                         Productos con stock bajo
                     </div>
                     <div className="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400">
-                        0
+                        {stats.low_stock_count}
                     </div>
                     <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
-                        Este widget va a alertar cuando el stock esté por debajo del mínimo.
+                        Productos por debajo del mínimo configurado.
                     </p>
                 </div>
 
@@ -51,7 +58,7 @@ export const DashboardPage = () => {
                         0
                     </div>
                     <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
-                        Más adelante, se conectará a Cuentas Corrientes.
+                        Próximamente
                     </p>
                 </div>
             </div>

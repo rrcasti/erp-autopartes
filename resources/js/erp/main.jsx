@@ -9,6 +9,19 @@ import { DashboardPage } from './modules/dashboard/DashboardPage';
 import { ParamSettingsPage } from './modules/parametros/ParamSettingsPage'; // nueva página de parámetros
 import { ProductosListPage } from './modules/productos/ProductosListPage';
 import { MostradorPage } from './modules/mostrador/MostradorPage';
+import { StockPage } from './modules/stock/StockPage';
+import { PurchasesModulePage } from './modules/compras/PurchasesModulePage';
+import { SoldTodayPage } from './modules/inventario/SoldTodayPage';
+
+const Placeholder = ({ title }) => (
+    <div className="flex h-full items-center justify-center text-slate-400">
+        <div className="text-center">
+            <div className="text-4xl mb-4">🚧</div>
+            <h2 className="text-xl font-bold">{title}</h2>
+            <p className="text-sm mt-2 opacity-75">Módulo en desarrollo</p>
+        </div>
+    </div>
+);
 
 const ErpRoutes = () => (
     <LayoutShell>
@@ -20,12 +33,26 @@ const ErpRoutes = () => (
             {/* Parámetros -> Apariencia */}
             <Route path="/parametros" element={<ParamSettingsPage />} />
 
-            {/* aquí después sumamos productos, proveedores, etc. */}
             {/* Productos */}
             <Route path="/productos" element={<ProductosListPage />} />
 
-            {/* Mostrador (Nuevo) */}
+            {/* Mostrador */}
             <Route path="/mostrador/*" element={<MostradorPage />} />
+
+            {/* Gestión Actual de Stock */}
+            <Route path="/stock" element={<StockPage />} />
+            <Route path="/inventario/vendido-hoy" element={<SoldTodayPage />} />
+
+            {/* Compras */}
+            <Route path="/compras/*" element={<PurchasesModulePage />} />
+
+            {/* Rutas Placeholder para secciones futuras */}
+            <Route path="/clientes" element={<Placeholder title="Clientes y Talleres" />} />
+            <Route path="/cuentas-corrientes" element={<Placeholder title="Cuentas Corrientes" />} />
+            <Route path="/caja" element={<Placeholder title="Caja y Gastos" />} />
+            
+            {/* Catch-all para sub-rutas no definidas */}
+            <Route path="*" element={<Placeholder title="Página No Encontrada" />} />
         </Routes>
     </LayoutShell>
 );

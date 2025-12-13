@@ -273,4 +273,9 @@ class ProductoApiController extends Controller
         
         return response()->json($marca, 201);
     }
+    public function familias()
+    {
+        return \App\Models\FamiliaProducto::orderBy('nombre')->get(['id', 'nombre']);
+    }
+
 }

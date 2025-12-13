@@ -14,6 +14,7 @@ use App\Models\CashMovement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use App\Services\StockService;
 
 class PosController extends Controller
 {
@@ -74,8 +75,10 @@ class PosController extends Controller
     /**
      * Confirma la venta, generando movimientos de stock, caja y comprobante.
      */
-    public function confirmSale(Request $request)
+    public function confirmSale(Request $request, StockService $stockService)
     {
+        \Illuminate\Support\Facades\Log::error('POS SALE PAYLOAD:', $request->all());
+
         // Validación básica
         $payload = $request->validate([
             'items' => 'required|array|min:1',
@@ -84,7 +87,7 @@ class PosController extends Controller
             'paymentMethod' => 'required|string',
         ]);
 
-        return DB::transaction(function () use ($payload) {
+        return DB::transaction(function () use ($payload, $stockService) {
             // 1. Resolver Cliente
             $customer = $this->resolveCustomer($payload['customer'] ?? []);
 
@@ -105,9 +108,8 @@ class PosController extends Controller
                 'observaciones' => $posNumber, // Guardamos el nro visible aquí temp
             ]);
 
-            // 4. Procesar Items y Stock
+            // 4. Procesar Items (Snapshot)
             foreach ($payload['items'] as $item) {
-                // Snapshot Item
                 SaleItem::create([
                     'sale_id' => $sale->id,
                     'producto_id' => $item['product_id'] ?? null,
@@ -117,29 +119,16 @@ class PosController extends Controller
                     'sku' => $item['sku'] ?? null,
                     'cantidad' => $item['quantity'],
                     'precio_unitario' => $item['price'],
-                    'alicuota_iva' => 21.00, // TODO: Config
+                    'alicuota_iva' => 21.00, 
                     'subtotal' => $item['price'] * $item['quantity'],
                 ]);
-
-                // Descuento de Stock (Solo si no es manual y tiene ID)
-                if (!empty($item['product_id'])) {
-                    $producto = Producto::find($item['product_id']);
-                    if ($producto && $producto->stock_controlado) {
-                        // Validar stock negativo si es policy strict (Omitido por requerimiento "permitir x defecto")
-                        $producto->decrement('stock_disponible', $item['quantity']);
-                        
-                        // Kardex Log
-                        StockMovement::create([
-                            'product_id' => $producto->id,
-                            'user_id' => Auth::id(),
-                            'type' => 'sale',
-                            'quantity' => -1 * abs($item['quantity']),
-                            'sale_id' => $sale->id,
-                            'reference_description' => "Venta Mostrador #$posNumber",
-                        ]);
-                    }
-                }
             }
+
+            // Refrescar items para pasarlos al servicio de stock
+            $sale->load('items');
+            
+            // Descontar Stock y generar Kardex
+            $stockService->applySaleOutflow($sale, $sale->items, 1, Auth::user());
 
             // 5. Registrar en Caja (Session)
             // Buscar caja abierta del usuario

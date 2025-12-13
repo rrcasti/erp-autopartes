@@ -174,9 +174,20 @@ export const SaleTab = ({ tab }) => {
     };
 
     const handleAddItem = (product) => {
+        // Validar Stock
+        if (product.stock <= 0) {
+            alert(`⛔ STOCK AGOTADO\n\nNo hay existencias de "${product.name}".\nNo se puede agregar a la venta.`);
+            return;
+        }
+
         setItems((prevItems) => {
             const existingIndex = prevItems.findIndex(i => i.id === product.id);
             if (existingIndex >= 0) {
+                const currentQty = prevItems[existingIndex].quantity;
+                if (currentQty >= product.stock) {
+                     alert(`⚠️ STOCK INSUFICIENTE\n\nSolo quedan ${product.stock} unidades de "${product.name}".`);
+                     return prevItems;
+                }
                 const newItems = [...prevItems];
                 newItems[existingIndex].quantity += 1;
                 return newItems;
@@ -184,8 +195,6 @@ export const SaleTab = ({ tab }) => {
                 return [...prevItems, { ...product, quantity: 1 }];
             }
         });
-        
-        // Feedback visual o sonoro podría ir aquí
     };
 
     const handleRemoveItem = (index) => {
@@ -359,6 +368,13 @@ export const SaleTab = ({ tab }) => {
                                                 value={item.quantity}
                                                 onChange={(e) => {
                                                     const val = parseInt(e.target.value) || 0;
+                                                    const maxStock = item.stock !== undefined ? item.stock : Infinity;
+                                                    
+                                                    if (val > maxStock) {
+                                                        alert(`⚠️ Stock máximo disponible: ${maxStock}`);
+                                                        return;
+                                                    }
+                                                    
                                                     const newItems = [...items];
                                                     newItems[index].quantity = val;
                                                     setItems(newItems);

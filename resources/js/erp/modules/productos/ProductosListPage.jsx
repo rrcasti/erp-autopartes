@@ -162,7 +162,7 @@ export const ProductosListPage = () => {
 
     const fetchMarcasProductos = async () => {
         try {
-            const resp = await fetch('/erp/marcas-productos', {
+            const resp = await fetch('/erp/api/marcas-productos', {
                 headers: { 'Accept': 'application/json' }
             });
             if (resp.ok) {
