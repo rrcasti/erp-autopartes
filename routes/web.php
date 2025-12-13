@@ -1,0 +1,126 @@
+<?php
+
+use App\Http\Controllers\ProfileController;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Erp\ProductoApiController;
+use App\Http\Controllers\Erp\VehiculoApiController;
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+// Página pública inicial (puede quedar como está)
+Route::get('/', function () {
+    return view('welcome');
+});
+
+// RUTA TEMPORAL DE FIX COLUMNA (Borrar tras usar)
+// RUTA TEMPORAL DE FIX COLUMNA (Borrar tras usar)
+Route::get('/fix-db-column', function () {
+    try {
+        // Intento directo con SQL crudo (MySQL)
+        // Ignoramos error si ya existe (Duplicate column name)
+        \Illuminate\Support\Facades\DB::statement("
+            ALTER TABLE productos 
+            ADD COLUMN proveedor_id BIGINT UNSIGNED NULL AFTER marca_id,
+            ADD INDEX (proveedor_id);
+        ");
+        return "Columna proveedor_id AGREGADA con éxito (SQL RAW).";
+    } catch (\Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column name') !== false) {
+            return "La columna proveedor_id YA EXISTE (Detectado por error duplicate).";
+        }
+        return "Error SQL: " . $e->getMessage();
+    }
+});
+Route::get('/dashboard', function () {
+    return view('dashboard');
+})->middleware(['auth', 'verified'])->name('dashboard');
+
+// Rutas protegidas por login
+Route::middleware('auth')->group(function () {
+
+    // Perfil de usuario (Breeze)
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    /*
+    |--------------------------------------------------------------------------
+    | ERP RepuestosKm21
+    |--------------------------------------------------------------------------
+    | Prefijo /erp para la SPA y /erp/api para los endpoints JSON.
+    |--------------------------------------------------------------------------
+    */
+
+    // Vista principal ERP (React)
+    Route::prefix('erp')->group(function () {
+
+        // SPA shell (Catch-all para permitir deep linking de React Router)
+        Route::get('/{any?}', function () {
+            return view('erp.index');
+        })->where('any', '.*')->name('erp.index');
+
+        // API del ERP
+        Route::prefix('api')->group(function () {
+
+            // --------------------
+            // Productos CRUD
+            // --------------------
+            Route::get('/marcas-productos', [ProductoApiController::class, 'marcas']);
+            Route::post('/marcas-productos', [ProductoApiController::class, 'storeMarca']); // Nuevo
+            
+            Route::get('/productos', [ProductoApiController::class, 'index']);
+            Route::post('/productos', [ProductoApiController::class, 'store']);
+            Route::get('/productos/{producto}', [ProductoApiController::class, 'show']);
+            Route::put('/productos/{producto}', [ProductoApiController::class, 'update']);
+            Route::delete('/productos/{producto}', [ProductoApiController::class, 'destroy']);
+
+            // Compatibilidad producto ↔ vehículo
+            Route::get('/productos/{producto}/vehiculos', [\App\Http\Controllers\Erp\ProductoVehiculoApiController::class, 'index']);
+            Route::post('/productos/{producto}/vehiculos-sync', [\App\Http\Controllers\Erp\ProductoVehiculoApiController::class, 'sync']);
+            // Búsqueda por código de barras
+            Route::get(
+                '/productos-barcode/{codigo}',
+                [ProductoApiController::class, 'findByBarcode']
+            );
+
+            // Compatibilidad producto ↔ vehículo (Legacy method names fixes)
+            // Nota: Arriba usamos ProductoVehiculoApiController, aquí abajo ProductoApiController directo.
+            // Mantenemos ambos por si el frontend llama a alguno específico, aunque idealmente deberíamos unificar.
+            // Por consistencia con ProductoApiController@vehiculos que añadimos en paso previo:
+            // Route::get('/productos/{producto}/vehiculos', [ProductoApiController::class, 'vehiculos']); 
+            // ELIMINADO duplicado, el de arriba vale si existe el controller. Pero espera, en pasos anteriores usé ProductoApiController para vehiculos.
+            // Para no romper nada de lo que acabo de escribir en ProductoApiController, usaré sus métodos.
+            
+            Route::get('/productos/{producto}/vehiculos-list', [ProductoApiController::class, 'vehiculos']); // Renombrado para evitar conflicto ruta
+            Route::post('/productos/{producto}/vehiculos', [ProductoApiController::class, 'attachVehiculo']);
+            Route::delete(
+                '/productos/{producto}/vehiculos/{vehiculo}',
+                [ProductoApiController::class, 'detachVehiculo']
+            );
+            
+            // --------------------
+            // Catálogo de Vehículos
+            // --------------------
+            Route::get('/vehiculos/marcas', [VehiculoApiController::class, 'marcas']);
+            Route::get('/vehiculos/modelos', [VehiculoApiController::class, 'modelos']);
+            Route::get('/vehiculos', [VehiculoApiController::class, 'vehiculos']);
+            Route::post('/vehiculos/crear', [VehiculoApiController::class, 'crear']);
+
+            // --------------------
+            // Proveedores
+            // --------------------
+            Route::get('/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'index']);
+            Route::post('/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'store']); // Nuevo
+            
+            Route::get('/productos/{producto}/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'proveedoresDeProducto']);
+            Route::post('/productos/{producto}/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'attachProveedor']);
+            Route::delete('/productos/{producto}/proveedores/{proveedor}', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'detachProveedor']);
+        });
+    });
+});
+
+require __DIR__.'/auth.php';
