@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { HelpShortcutsModal } from './HelpShortcutsModal';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
+import { WorkspaceManager } from '../components/workspace/WorkspaceManager';
 
 export const LayoutShell = ({ children }) => {
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -26,6 +27,8 @@ export const LayoutShell = ({ children }) => {
                 </main>
             </div>
 
+            <WorkspaceManager />
+            
             <HelpShortcutsModal open={showHelp} onClose={() => setShowHelp(false)} />
         </div>
     );

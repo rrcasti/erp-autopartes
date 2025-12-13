@@ -1,7 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 
 export const MostradorPage = () => {
+    const { addTab } = useWorkspaceStore();
+
     return (
         <div className="p-6">
             {/* Encabezado */}
@@ -14,8 +17,8 @@ export const MostradorPage = () => {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 
                 {/* Ventas (principal) */}
-                <Link to="/mostrador/ventas"
-                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-indigo-500/10 to-white/0 p-5 shadow-sm transition
+                <div onClick={() => addTab({ type: 'sale' })}
+                    className="cursor-pointer group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-indigo-500/10 to-white/0 p-5 shadow-sm transition
               hover:-translate-y-0.5 hover:border-white/20 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400/30">
                     <div className="pointer-events-none absolute -inset-10 opacity-0 transition duration-300 group-hover:opacity-100"
                         style={{ background: 'radial-gradient(600px circle at 20% 10%, rgba(99,102,241,0.18), transparent 55%)' }}></div>
@@ -33,7 +36,7 @@ export const MostradorPage = () => {
                                 Cobrar rápido. Productos + marca (variación) + precio. Totales sin IVA y con IVA.
                             </p>
                         </div>
-                        <span className="text-xs text-slate-400 group-hover:text-slate-300 transition">Entrar →</span>
+                        <span className="text-xs text-slate-400 group-hover:text-slate-300 transition">Abrir Pestaña →</span>
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -45,11 +48,11 @@ export const MostradorPage = () => {
                     {/* Sheen sutil */}
                     <div className="pointer-events-none absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100"
                         style={{ background: 'linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.06) 45%, transparent 60%)', transform: 'translateX(-20%)' }}></div>
-                </Link>
+                </div>
 
                 {/* Caja diaria */}
-                <Link to="/mostrador/caja"
-                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-emerald-400/8 to-white/0 p-5 shadow-sm transition
+                <div onClick={() => addTab({ type: 'cash' })}
+                    className="cursor-pointer group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-emerald-400/8 to-white/0 p-5 shadow-sm transition
               hover:-translate-y-0.5 hover:border-white/20 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-300/25">
                     <div className="pointer-events-none absolute -inset-10 opacity-0 transition duration-300 group-hover:opacity-100"
                         style={{ background: 'radial-gradient(600px circle at 20% 10%, rgba(52,211,153,0.14), transparent 55%)' }}></div>
@@ -66,7 +69,7 @@ export const MostradorPage = () => {
                                 Apertura/cierre, ingresos/egresos y resumen por medio de pago.
                             </p>
                         </div>
-                        <span className="text-xs text-slate-400 group-hover:text-slate-300 transition">Entrar →</span>
+                        <span className="text-xs text-slate-400 group-hover:text-slate-300 transition">Abrir Pestaña →</span>
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -74,11 +77,11 @@ export const MostradorPage = () => {
                         <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-slate-300 ring-1 ring-white/10">Cierre</span>
                         <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-slate-300 ring-1 ring-white/10">Movimientos</span>
                     </div>
-                </Link>
+                </div>
 
                 {/* Presupuestos */}
-                <Link to="/mostrador/presupuestos"
-                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-sky-400/8 to-white/0 p-5 shadow-sm transition
+                <div onClick={() => addTab({ type: 'quote' })}
+                    className="cursor-pointer group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-sky-400/8 to-white/0 p-5 shadow-sm transition
               hover:-translate-y-0.5 hover:border-white/20 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-300/25">
                     <div className="pointer-events-none absolute -inset-10 opacity-0 transition duration-300 group-hover:opacity-100"
                         style={{ background: 'radial-gradient(600px circle at 20% 10%, rgba(56,189,248,0.12), transparent 55%)' }}></div>
@@ -95,7 +98,7 @@ export const MostradorPage = () => {
                                 Crear y enviar por WhatsApp. PDF profesional con cabecera y datos del cliente.
                             </p>
                         </div>
-                        <span className="text-xs text-slate-400 group-hover:text-slate-300 transition">Entrar →</span>
+                        <span className="text-xs text-slate-400 group-hover:text-slate-300 transition">Abrir Pestaña →</span>
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -103,7 +106,7 @@ export const MostradorPage = () => {
                         <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-slate-300 ring-1 ring-white/10">PDF</span>
                         <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-slate-300 ring-1 ring-white/10">Historial cliente</span>
                     </div>
-                </Link>
+                </div>
 
                 {/* Devoluciones */}
                 <Link to="/mostrador/devoluciones"

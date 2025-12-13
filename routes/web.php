@@ -113,6 +113,12 @@ Route::middleware('auth')->group(function () {
             // --------------------
             // Proveedores
             // --------------------
+            Route::apiResource('proveedores', \App\Http\Controllers\Erp\ProveedorApiController::class);
+
+            // --------------------
+            // Workspace / Mostrador
+            // --------------------
+            Route::apiResource('drafts', \App\Http\Controllers\Erp\WorkspaceDraftController::class);
             Route::get('/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'index']);
             Route::post('/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'store']); // Nuevo
             
