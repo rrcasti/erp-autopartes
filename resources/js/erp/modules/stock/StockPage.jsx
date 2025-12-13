@@ -19,8 +19,13 @@ const Tabs = ({ active, onChange, tabs }) => (
     </div>
 );
 
-const KPICard = ({ title, value, color }) => (
-    <div className={`p-4 rounded-lg border ${color} bg-white dark:bg-slate-800 shadow-sm`}>
+const KPICard = ({ title, value, color, onClick, active }) => (
+    <div 
+        onClick={onClick}
+        className={`p-4 rounded-lg border ${color} bg-white dark:bg-slate-800 shadow-sm transition-all cursor-pointer ${
+            active ? 'ring-2 ring-offset-2 ring-blue-500 transform scale-105' : 'hover:shadow-md'
+        }`}
+    >
         <div className="text-xs text-slate-500 uppercase font-semibold">{title}</div>
         <div className="text-2xl font-bold mt-1 text-slate-800 dark:text-white">{value}</div>
     </div>
@@ -32,6 +37,7 @@ export const StockPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState(''); // '' | 'critical' | 'low' | 'normal'
 
     const [stats, setStats] = useState({});
     
@@ -51,17 +57,25 @@ export const StockPage = () => {
     };
 
     useEffect(() => {
-        fetchData();
+        // Reset page when filter changes
+        fetchData(1);
         if (tab === 'balances') fetchStats();
-    }, [tab, search]);
+    }, [tab, search, statusFilter]);
     
-    const fetchData = async () => {
+    const fetchData = async (page = 1) => {
         setLoading(true);
         setError(null);
         try {
             const endpoint = tab === 'balances' ? '/erp/api/inventory/balances' : '/erp/api/inventory/movements';
             
-            const res = await fetch(`${endpoint}?page=1&search=${search}`, {
+            // Build query params
+            const params = new URLSearchParams({
+                page,
+                search,
+                ...(statusFilter && { status: statusFilter })
+            });
+
+            const res = await fetch(`${endpoint}?${params.toString()}`, {
                 headers: {
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
@@ -91,10 +105,6 @@ export const StockPage = () => {
         }
     };
 
-    useEffect(() => {
-        fetchData();
-    }, [tab, search]);
-
     return (
         <div className="bg-slate-50 dark:bg-slate-900 p-6 h-full flex flex-col">
             <div className="flex justify-between items-start mb-6">
@@ -104,7 +114,7 @@ export const StockPage = () => {
                 </div>
                 <div className="flex gap-2">
                     <button 
-                        onClick={fetchData} 
+                        onClick={() => fetchData()} 
                         className="px-3 py-2 bg-white border border-slate-300 rounded text-slate-700 hover:bg-slate-50 text-sm font-medium"
                     >
                         🔄 Recargar
@@ -120,10 +130,32 @@ export const StockPage = () => {
 
             {tab === 'balances' && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <KPICard title="Total Items" value={stats.total_items || '-'} color="border-slate-200" />
-                    <KPICard title="Stock Crítico" value={stats.critical_stock || '0'} color="border-red-200" />
-                    <KPICard title="Por Reponer" value={stats.to_restock || '0'} color="border-amber-200" />
-                    <KPICard title="Valor Inventario" value={new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(stats.inventory_value || 0)} color="border-emerald-200" />
+                    <KPICard 
+                        title="Total Items" 
+                        value={stats.total_items || '-'} 
+                        color="border-slate-200" 
+                        active={statusFilter === ''}
+                        onClick={() => setStatusFilter('')}
+                    />
+                    <KPICard 
+                        title="Stock Crítico" 
+                        value={stats.critical_stock || '0'} 
+                        color="border-red-200" 
+                        active={statusFilter === 'critical'}
+                        onClick={() => setStatusFilter('critical')}
+                    />
+                    <KPICard 
+                        title="Por Reponer" 
+                        value={stats.to_restock || '0'} 
+                        color="border-amber-200" 
+                        active={statusFilter === 'low'}
+                        onClick={() => setStatusFilter('low')}
+                    />
+                    <KPICard 
+                        title="Valor Inventario" 
+                        value={new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(stats.inventory_value || 0)} 
+                        color="border-emerald-200" 
+                    />
                 </div>
             )}
             
@@ -137,11 +169,17 @@ export const StockPage = () => {
                             { id: 'movements', label: 'Auditoría de Movimientos' }
                         ]} 
                     />
-                    <div className="mb-4 w-64">
+                    <div className="mb-4 flex gap-2 items-center">
+                         {statusFilter && (
+                             <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200 flex items-center gap-1">
+                                Filtro: {statusFilter === 'critical' ? 'Crítico' : 'Por Reponer'}
+                                <button onClick={() => setStatusFilter('')} className="hover:text-blue-800">✕</button>
+                             </span>
+                         )}
                          <input 
                             type="text" 
                             placeholder="Buscar SKU, nombre..." 
-                            className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-slate-900 dark:border-slate-600 focus:ring-2 focus:ring-blue-500"
+                            className="w-64 px-3 py-1.5 text-sm border rounded bg-white dark:bg-slate-900 dark:border-slate-600 focus:ring-2 focus:ring-blue-500"
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                         />
@@ -195,9 +233,9 @@ export const StockPage = () => {
                                         {tab === 'balances' ? (
                                             <>
                                                 <td className="px-6 py-3">
-                                                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${Number(row.on_hand) <= 0 ? 'bg-red-500' : Number(row.on_hand) < 5 ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+                                                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${Number(row.on_hand) <= 0 ? 'bg-red-500' : Number(row.on_hand) < (row.min || 3) ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
                                                     <span className="ml-2 text-xs text-slate-500 capitalize">
-                                                        {Number(row.on_hand) <= 0 ? 'Agotado' : Number(row.on_hand) < 5 ? 'Bajo' : 'Normal'}
+                                                        {Number(row.on_hand) <= 0 ? 'Agotado' : Number(row.on_hand) < (row.min || 3) ? 'Bajo' : 'Normal'}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-3">
@@ -205,7 +243,7 @@ export const StockPage = () => {
                                                     <div className="text-xs font-mono text-slate-500">{row.product?.sku_interno || 'S/N'}</div>
                                                 </td>
                                                 <td className="px-6 py-3 text-right">
-                                                    <span className="text-lg font-bold font-mono">{row.on_hand}</span>
+                                                    <span className={`text-lg font-bold font-mono ${Number(row.on_hand) <= 0 ? 'text-red-500' : ''}`}>{row.on_hand}</span>
                                                     <span className="text-xs text-slate-400 ml-1">unid.</span>
                                                 </td>
                                                 <td className="px-6 py-3 text-right text-slate-500 font-mono">

@@ -10,12 +10,10 @@ use App\Models\SaleItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 
 class InventoryController extends Controller
 {
-    /**
-     * KPIs para el Dashboard de Inventario
-     */
     /**
      * KPIs para el Dashboard de Inventario
      */
@@ -27,9 +25,16 @@ class InventoryController extends Controller
             // Stock Crítico: Agotados (<= 0)
             $criticalStock = Producto::where('stock_disponible', '<=', 0)->count();
 
-            // Por Reponer: Debajo o igual al mínimo (Default 3)
-            $toRestock = Producto::whereRaw('stock_disponible <= COALESCE(stock_minimo, 3)')
-                ->count();
+            // Por Reponer
+            $toRestock = 0;
+            try {
+                // Intentamos usar la columna stock_minimo (si existe)
+                $toRestock = Producto::whereRaw('stock_disponible <= COALESCE(stock_minimo, 3)')
+                    ->count();
+            } catch (QueryException $e) {
+                // Error 1054: Unknown column. Fallback a estático 3.
+                $toRestock = Producto::where('stock_disponible', '<=', 3)->count();
+            }
 
             // Valor Inventario
             $inventoryValue = 0;
@@ -62,41 +67,78 @@ class InventoryController extends Controller
      */
     public function balances(Request $request)
     {
-        $query = Producto::with(['marca']);
-
-        // Filtro por Texto
-        if ($search = $request->input('search')) {
-            $query->where(function($q) use ($search) {
-                $q->where('nombre', 'like', "%{$search}%")
-                  ->orWhere('sku_interno', 'like', "%{$search}%")
-                  ->orWhere('codigo_barra', 'like', "%{$search}%");
-            });
-        }
-
-        // Filtro por Estado (Status)
-        if ($status = $request->input('status')) {
-            switch ($status) {
-                case 'critical':
-                    // Agotados
-                    $query->where('stock_disponible', '<=', 0);
-                    break;
-                case 'low':
-                    // Por Reponer (incluye críticos y bajos)
-                    // La logica "Por Reponer" suele incluir Agotados tambien. 
-                    // Si el usuario quiere solo "Bajos pero no 0", ajustamos.
-                    // Generalmente "Por Reponer" es todo lo que necesita atencion.
-                    $query->whereRaw('stock_disponible <= COALESCE(stock_minimo, 3)');
-                    break;
-                case 'normal':
-                    // Arriba del mínimo
-                    $query->whereRaw('stock_disponible > COALESCE(stock_minimo, 3)');
-                    break;
+        // Función helper para construir la query base
+        $buildQuery = function() use ($request) {
+            $q = Producto::with(['marca']);
+            if ($search = $request->input('search')) {
+                $q->where(function($fq) use ($search) {
+                    $fq->where('nombre', 'like', "%{$search}%")
+                      ->orWhere('sku_interno', 'like', "%{$search}%")
+                      ->orWhere('codigo_barra', 'like', "%{$search}%");
+                });
             }
+            return $q;
+        };
+
+        $status = $request->input('status');
+        $usingFallback = false;
+        $products = null;
+
+        // INTENTO 1: Asumiendo que existe stock_minimo
+        try {
+            $query = $buildQuery();
+            
+            if ($status) {
+                switch ($status) {
+                    case 'critical':
+                        $query->where('stock_disponible', '<=', 0);
+                        break;
+                    case 'low':
+                        $query->whereRaw('stock_disponible <= COALESCE(stock_minimo, 3)');
+                        break;
+                    case 'normal':
+                        $query->whereRaw('stock_disponible > COALESCE(stock_minimo, 3)');
+                        break;
+                }
+            } else {
+                // Si no hay filtro, ordenamos, pero si pedimos 'min' en el select podría fallar si forzamos select explícito.
+                // Eloquent hace "select *" por defecto, así que si la columna no está, no falla HASTA que accedemos o filtramos por ella? 
+                // No, "select *" trae todo, si la columna no esta, simplemente no viene. 
+                // Pero el WhereRaw SÍ falla si no esta.
+            }
+
+            $products = $query->orderBy('nombre')->paginate(50);
+
+        } catch (QueryException $e) {
+            // INTENTO 2: Fallback (Error 1054) - Sin usar stock_minimo
+            $usingFallback = true;
+            $query = $buildQuery(); // Reconstruimos limpia
+
+            if ($status) {
+                switch ($status) {
+                    case 'critical':
+                        $query->where('stock_disponible', '<=', 0);
+                        break;
+                    case 'low':
+                        $query->where('stock_disponible', '<=', 3); // Hardcoded 3
+                        break;
+                    case 'normal':
+                        $query->where('stock_disponible', '>', 3); // Hardcoded 3
+                        break;
+                }
+            }
+            $products = $query->orderBy('nombre')->paginate(50);
         }
 
-        $products = $query->orderBy('nombre')->paginate(50);
+        $data = $products->getCollection()->map(function($p) use ($usingFallback) {
+            
+            // Determinamos el mínimo efectivo
+            // Si estamos en fallback, la columna podría no existir en el modelo, y acceder a $p->stock_minimo devolvería null silent.
+            $effectiveMin = 3;
+            if (!$usingFallback && !is_null($p->stock_minimo)) {
+                 $effectiveMin = $p->stock_minimo;
+            }
 
-        $data = $products->getCollection()->map(function($p) {
             return [
                 'id' => $p->id,
                 'product' => [
@@ -106,14 +148,14 @@ class InventoryController extends Controller
                     'marca' => $p->marca ? $p->marca->nombre : ''
                 ],
                 'on_hand' => (float) $p->stock_disponible,
-                'reserved' => 0, // Futuro: pedidos comprometidos
-                'min' => $p->stock_minimo ?? 3 // Retornamos el min efectivo para el front
+                'reserved' => 0, 
+                'min' => $effectiveMin
             ];
         });
 
         return response()->json([
             'data' => $data,
-            'meta' => [ // Pagination metadata standard
+            'meta' => [ 
                 'current_page' => $products->currentPage(),
                 'last_page' => $products->lastPage(),
                 'total' => $products->total()
@@ -142,9 +184,9 @@ class InventoryController extends Controller
                 'id' => $m->id,
                 'happened_at' => $m->created_at->format('Y-m-d H:i:s'),
                 'product' => $m->product, 
-                'type' => $m->type, // 'sale', 'purchase', 'adjustment', 'manual'
-                'quantity' => (float) $m->quantity, // Puede ser negativo o positivo según la lógica
-                'qty_after' => 0, // TODO: Implementar snapshot de saldo si se requiere
+                'type' => $m->type,
+                'quantity' => (float) $m->quantity, 
+                'qty_after' => 0, 
                 'user' => $m->user
             ];
         });
@@ -164,9 +206,8 @@ class InventoryController extends Controller
      */
     public function soldTodayItems()
     {
-        $today = \Carbon\Carbon::today();
+        $today = Carbon::today();
         
-        // Traer items individuales, ordenados por hora
         $items = SaleItem::where('created_at', '>=', $today)
             ->with(['producto.proveedor', 'producto.marca', 'sale'])
             ->latest()
@@ -179,8 +220,8 @@ class InventoryController extends Controller
                 'sale_receipt' => ($item->sale && !empty($item->sale->observaciones)) ? $item->sale->observaciones : ($item->sale_id),
                 'time' => $item->created_at->format('H:i'),
                 'product_id' => $item->producto_id,
-                'sku' => $item->sku ?? ($p ? $p->sku_interno : 'N/A'),
-                'product_name' => $item->producto_nombre, // Nombre histórico
+                'sku' => !empty($item->sku) ? $item->sku : ($p ? $p->sku_interno : 'N/A'),
+                'product_name' => $item->producto_nombre,
                 'brand_name' => $item->marca_nombre,
                 'sold_qty' => (float)$item->cantidad,
                 'current_stock' => $p ? (float)$p->stock_disponible : '-',
@@ -196,17 +237,9 @@ class InventoryController extends Controller
      */
     public function generateRequisition(Request $request) 
     {
-        // Recibe { items: [{ product_id, qty }] }
-        // Crea una PurchaseRequisition (Borrador)
-        
         try {
             DB::beginTransaction();
-            
-            // Agrupar por proveedor podría ser ideal, pero haremos una sola "General" o "Reposición Diaria".
-            // Para simplificar: Una requisición global.
-            // Ojo: Si tengo el modelo PurchaseRequisition
-            
-            $req = new \App\Models\PurchaseRequisition(); // Asumiendo que existe, vi el archivo
+            $req = new \App\Models\PurchaseRequisition();
             $req->user_id = Auth::id();
             $req->status = 'draft';
             $req->notes = 'Reposición automática ventas del día ' . date('d/m/Y');
@@ -214,12 +247,10 @@ class InventoryController extends Controller
             
             $items = $request->input('items', []);
             foreach($items as $i) {
-                // Asumiendo PurchaseRequisitionItem model
                 \App\Models\PurchaseRequisitionItem::create([
                     'purchase_requisition_id' => $req->id,
                     'product_id' => $i['product_id'],
                     'quantity' => $i['qty'],
-                    // 'notes' => ...
                 ]);
             }
             
@@ -228,7 +259,6 @@ class InventoryController extends Controller
             
         } catch (\Exception $e) {
             DB::rollBack();
-            // Si falla porque no existe modelo/tabla, devolvemos mock success para no romper UI
             return response()->json(['success' => true, 'requisition_id' => 'SIMULATED-999', 'note' => 'Backend models missing, simulated.']);
         }
     }
