@@ -128,6 +128,7 @@ Route::middleware('auth')->group(function () {
             // --------------------
             Route::post('/pos/resolve', [\App\Http\Controllers\Erp\PosController::class, 'resolveProduct']);
             Route::post('/pos/sale', [\App\Http\Controllers\Erp\PosController::class, 'confirmSale']);
+            Route::post('/pos/sale/{id}/rollback', [\App\Http\Controllers\Erp\PosController::class, 'rollbackSale']);
         });
 
         // Rutas Web ERP (Print, Exports, etc)

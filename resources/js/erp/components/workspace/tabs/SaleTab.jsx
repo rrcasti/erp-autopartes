@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore';
 import { 
-    Search, ScanBarcode, User, CreditCard, Printer, Send, 
+    Search, ScanBarcode, User, CreditCard, Printer, Send, MessageCircle,
     Trash2, Plus, Minus, AlertCircle, Check, X, Box, MoreVertical, ShoppingCart, Loader2 
 } from 'lucide-react';
 import { SearchableSelect } from '../../SearchableSelect'; // Reutilizaremos si sirve, o haremos uno custom para items
+import { SaleSummaryPanel } from './SaleSummaryPanel';
 
 export const SaleTab = ({ tab }) => {
     // Conexión con Store Global (Persistencia)
@@ -18,6 +19,8 @@ export const SaleTab = ({ tab }) => {
     const [customer, setCustomer] = useState(safePayload.customer || {});
     const [totals, setTotals] = useState(safePayload.totals || { subtotal: 0, iva: 0, total: 0 });
     const [paymentMethod, setPaymentMethod] = useState(safePayload.paymentMethod || 'efectivo');
+    const [confirmedSale, setConfirmedSale] = useState(safePayload.confirmedSale || null);
+    const [applyTax, setApplyTax] = useState(false);
     
     // Estado UI efímero
     const [searchQuery, setSearchQuery] = useState('');
@@ -34,11 +37,12 @@ export const SaleTab = ({ tab }) => {
                 items, 
                 customer, 
                 totals, 
-                paymentMethod 
+                paymentMethod,
+                confirmedSale 
             });
         }, 500); // 500ms debounce
         return () => clearTimeout(timer);
-    }, [items, customer, totals, paymentMethod]); // Dependencias
+    }, [items, customer, totals, paymentMethod, confirmedSale]); // Dependencias
 
     // Focus en scanner al montar
     useEffect(() => {
@@ -96,24 +100,27 @@ export const SaleTab = ({ tab }) => {
 
     // Calcular totales automáticamente
     useEffect(() => {
-        const sub = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-        // Asumimos IVA incluido o no según config? 
-        // Para MVP: Precio es final. Desglosamos IVA del total (precio / 1.21 * 0.21) o sumamos?
-        // El usuario ve "IVA (21%)" en la UI.
-        // Si el precio lista es con IVA, entonces desglosamos. 
-        // Si es neto, sumamos.
-        // Asumiré estilo consumidor final: Precio Lista incluye IVA.
-        // Entonces: Total = Suma precios. Subtotal = Total / 1.21. IVA = Total - Subtotal.
-        const total = sub;
-        const subtotal = total / 1.21;
-        const iva = total - subtotal;
+        const baseSubtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
         
+        // Lógica IVA Opcional:
+        // Si applyTax es false: Precio es final (IVA 0).
+        // Si applyTax es true: Se agrega 21% sobre la base.
+        
+        let subtotal = baseSubtotal;
+        let iva = 0;
+        let total = baseSubtotal;
+
+        if (applyTax) {
+            iva = baseSubtotal * 0.21;
+            total = baseSubtotal + iva;
+        }
+
         setTotals({
             subtotal,
             iva,
             total
         });
-    }, [items]);
+    }, [items, applyTax]);
 
     const executeSearch = async (query) => {
         if (!query.trim()) {
@@ -195,17 +202,36 @@ export const SaleTab = ({ tab }) => {
         const res = await apiCall('/erp/api/pos/sale', payload);
 
         if (res && res.success) {
-            if (confirm('Venta #' + res.receipt_number + ' Confirmada. \n¿Imprimir comprobante?')) {
-                window.open(res.print_url, '_blank', 'width=400,height=600');
+            if (res.summary) {
+                // Nuevo flujo: Resumen Visual
+                setConfirmedSale(res.summary);
+            } else {
+                // Fallback Legacy (por si rollback backend)
+                if (confirm('Venta #' + res.receipt_number + ' Confirmada. \n¿Imprimir comprobante?')) {
+                    window.open(res.print_url, '_blank', 'width=400,height=600');
+                }
+                handleNewSale(); // Reset directo
             }
-            if (res.whatsapp_url && confirm('¿Enviar por WhatsApp?')) {
-                window.open(res.whatsapp_url, '_blank');
-            }
-            setItems([]);
-            setCustomer({});
-            setTotals({ subtotal: 0, iva: 0, total: 0 });
-            setSearchQuery('');
-            if (inputScanRef.current) inputScanRef.current.focus();
+        }
+    };
+
+    const handleNewSale = () => {
+        setConfirmedSale(null);
+        setItems([]);
+        setCustomer({});
+        setTotals({ subtotal: 0, iva: 0, total: 0 });
+        setSearchQuery('');
+        setApplyTax(false);
+        setTimeout(() => inputScanRef.current?.focus(), 100);
+    };
+
+    const handleEditSale = async (saleId) => {
+        const res = await apiCall(`/erp/api/pos/sale/${saleId}/rollback`, {}, 'POST'); // POST explícito si apiCall lo soporta, mi apiCall usa POST por defecto
+        if (res && res.success) {
+            setConfirmedSale(null); // Ocultar resumen, volver formulario
+            // Items y Customer siguen en estado, listos para editar
+        } else {
+            alert('No se pudo anular la venta. \n' + (res?.message || 'Error desconocido'));
         }
     };
 
@@ -216,7 +242,11 @@ export const SaleTab = ({ tab }) => {
         }
         if (e.key === 'F9') {
             e.preventDefault();
-            handleFinalize();
+            if (!confirmedSale) handleFinalize();
+        }
+        if (e.key === 'Escape' && confirmedSale) {
+            e.preventDefault();
+            handleNewSale();
         }
     };
 
@@ -379,22 +409,39 @@ export const SaleTab = ({ tab }) => {
                                  type="text" 
                                  placeholder="Buscar..."
                                  onKeyDown={(e) => {
-                                     if(e.key === 'Enter') setCustomer({ name: e.target.value, phone: '', id: null });
+                                     if(e.key === 'Enter') {
+                                         const val = e.target.value.trim();
+                                         // Detectar si es un número de teléfono (mayoría dígitos, min 6 chars)
+                                         const isPhone = /^[0-9\-\+\s]{7,15}$/.test(val);
+                                         
+                                         if (isPhone) {
+                                            // Si es teléfono, lo usamos como tal y ponemos nombre genérico
+                                            setCustomer({ name: 'Cliente (' + val + ')', phone: val, id: null });
+                                         } else {
+                                            // Texto normal = Nombre
+                                            setCustomer({ name: val, phone: '', id: null });
+                                         }
+                                     }
                                  }} 
-                                 className="flex-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
+                                 className="flex-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white placeholder:text-slate-400 font-medium"
                              />
                              <button 
-                                 onClick={() => setCustomer({ name: 'Final', id: null })}
-                                 className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs rounded border border-slate-300 dark:border-slate-700 transition"
+                                 onClick={() => setCustomer({ name: 'Consumidor Final', id: null })}
+                                 className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-bold uppercase rounded border border-slate-300 dark:border-slate-700 transition"
                              >
                                  Final
                              </button>
                          </div>
                     ) : (
-                        <div className="bg-indigo-50 dark:bg-slate-800/50 rounded p-2 border border-indigo-200 dark:border-slate-700 flex justify-between items-center group">
-                            <div>
-                                <div className="font-semibold text-slate-900 dark:text-slate-200 text-sm leading-none">{customer.name}</div>
-                                {customer.phone && <div className="text-[10px] text-slate-600 mt-1">{customer.phone}</div>}
+                        <div className="bg-indigo-50 dark:bg-slate-800/50 rounded p-2 border border-indigo-200 dark:border-slate-700 flex justify-between items-center group relative">
+                            <div className="flex-1 min-w-0 pr-2">
+                                <div className="font-bold text-slate-900 dark:text-slate-200 text-xs truncate uppercase">{customer.name}</div>
+                                {customer.phone && (
+                                    <div className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 flex items-center gap-1 font-mono">
+                                        <MessageCircle size={10} className="text-emerald-500" />
+                                        {customer.phone}
+                                    </div>
+                                )}
                             </div>
                             <button onClick={() => setCustomer({})} className="text-slate-500 hover:text-red-600">
                                 <X size={14} />
@@ -429,6 +476,20 @@ export const SaleTab = ({ tab }) => {
 
                 {/* Footer Totales */}
                 <div className="bg-slate-100 dark:bg-slate-950 p-4 border-t border-slate-200 dark:border-slate-800">
+                    
+                    {/* Checkbox IVA */}
+                    <div className="flex justify-end mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                            <input 
+                                type="checkbox" 
+                                checked={applyTax} 
+                                onChange={e => setApplyTax(e.target.checked)}
+                                className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" 
+                            />
+                            <span className="font-semibold">Aplicar IVA (21%)</span>
+                        </label>
+                    </div>
+
                     <div className="space-y-1 mb-3 text-xs">
                         <div className="flex justify-between text-slate-700 dark:text-slate-400 font-medium">
                             <span>Subtotal</span>
@@ -455,6 +516,14 @@ export const SaleTab = ({ tab }) => {
                     </button>
                 </div>
             </div>
+            {/* Integración del Panel de Resumen (Overlay) */}
+            {confirmedSale && (
+                <SaleSummaryPanel 
+                    summary={confirmedSale} 
+                    onNewSale={handleNewSale} 
+                    onEditSale={handleEditSale}
+                />
+            )}
         </div>
     );
 };
