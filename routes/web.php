@@ -58,10 +58,7 @@ Route::middleware('auth')->group(function () {
     // Vista principal ERP (React)
     Route::prefix('erp')->group(function () {
 
-        // SPA shell (Catch-all para permitir deep linking de React Router)
-        Route::get('/{any?}', function () {
-            return view('erp.index');
-        })->where('any', '.*')->name('erp.index');
+
 
         // API del ERP
         Route::prefix('api')->group(function () {
@@ -78,9 +75,9 @@ Route::middleware('auth')->group(function () {
             Route::put('/productos/{producto}', [ProductoApiController::class, 'update']);
             Route::delete('/productos/{producto}', [ProductoApiController::class, 'destroy']);
 
-            // Compatibilidad producto ↔ vehículo
-            Route::get('/productos/{producto}/vehiculos', [\App\Http\Controllers\Erp\ProductoVehiculoApiController::class, 'index']);
-            Route::post('/productos/{producto}/vehiculos-sync', [\App\Http\Controllers\Erp\ProductoVehiculoApiController::class, 'sync']);
+            // Compatibilidad producto ↔ vehículo (PENDIENTE: Crear Controller)
+            // Route::get('/productos/{producto}/vehiculos', [\App\Http\Controllers\Erp\ProductoVehiculoApiController::class, 'index']);
+            // Route::post('/productos/{producto}/vehiculos-sync', [\App\Http\Controllers\Erp\ProductoVehiculoApiController::class, 'sync']);
             // Búsqueda por código de barras
             Route::get(
                 '/productos-barcode/{codigo}',
@@ -125,7 +122,22 @@ Route::middleware('auth')->group(function () {
             Route::get('/productos/{producto}/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'proveedoresDeProducto']);
             Route::post('/productos/{producto}/proveedores', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'attachProveedor']);
             Route::delete('/productos/{producto}/proveedores/{proveedor}', [\App\Http\Controllers\Erp\ProveedorApiController::class, 'detachProveedor']);
+
+            // --------------------
+            // Punto de Venta (POS)
+            // --------------------
+            Route::post('/pos/resolve', [\App\Http\Controllers\Erp\PosController::class, 'resolveProduct']);
+            Route::post('/pos/sale', [\App\Http\Controllers\Erp\PosController::class, 'confirmSale']);
         });
+
+        // Rutas Web ERP (Print, Exports, etc)
+        Route::get('/pos/print/{id}', [\App\Http\Controllers\Erp\PosController::class, 'printReceipt'])->name('pos.print');
+
+        // SPA shell (Catch-all for React Router) - DEFINE LAST
+        Route::get('/{any?}', function () {
+            return view('erp.index');
+        })->where('any', '.*')->name('erp.index');
+
     });
 });
 

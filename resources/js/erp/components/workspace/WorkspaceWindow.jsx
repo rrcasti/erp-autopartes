@@ -27,19 +27,19 @@ export const WorkspaceWindow = ({ tab, isActive }) => {
     return (
         <Rnd
             default={{
-                x: window.innerWidth / 2 - 450,
-                y: window.innerHeight / 2 - 325,
-                width: 900,
-                height: 650,
+                x: 260, // Desplazado a la derecha para no tapar sidebar
+                y: 70,  // Justo debajo del header
+                width: 1050, // Más ancho para aprovechar el espacio
+                height: 500, // Altura ajustada para no dejar espacio vacío
             }}
             minWidth={400}
             minHeight={300}
-            bounds="window"
+            bounds="window" // Restaurado a window para evitar conflicto con contenedor padre sin dimensiones
             dragHandleClassName="window-header"
             onDragStart={() => focusTab(tab.id)}
             onMouseDown={() => focusTab(tab.id)}
-            className="flex flex-col bg-slate-900 border border-slate-700/80 shadow-2xl rounded-xl overflow-hidden ring-1 ring-white/5"
-            style={{ zIndex: 100 }} // Asegurar que flote sobre todo
+            className="flex flex-col bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 shadow-2xl rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+            style={{ zIndex: 100 }}
         >
             {/* Header Profesional Refactorizado */}
             <WorkspaceWindowHeader 
@@ -49,7 +49,7 @@ export const WorkspaceWindow = ({ tab, isActive }) => {
             />
 
             {/* Content Body */}
-            <div className="flex-1 bg-slate-950/50 overflow-hidden relative">
+            <div className="flex-1 bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
                 {renderContent()}
             </div>
         </Rnd>
