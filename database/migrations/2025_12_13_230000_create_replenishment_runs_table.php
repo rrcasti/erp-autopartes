@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::create('replenishment_runs', function (Blueprint $table) {
             $table->id();
             
-            $table->string('run_type')->default('AUTO_REPLENISHMENT'); // 'AUTO_REPLENISHMENT'
-            $table->string('status')->default('DRAFT'); // 'DRAFT', 'CLOSED', 'CANCELLED'
+            $table->string('run_type', 50)->default('AUTO_REPLENISHMENT'); // 'AUTO_REPLENISHMENT'
+            $table->string('status', 20)->default('DRAFT'); // 'DRAFT', 'CLOSED', 'CANCELLED'
             
             $table->dateTime('from_at');
             $table->dateTime('to_at');

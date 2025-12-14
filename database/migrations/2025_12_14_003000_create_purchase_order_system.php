@@ -9,22 +9,25 @@ class CreatePurchaseOrderSystem extends Migration
     public function up()
     {
         // 1. Agregar committed_qty a replenishment_backlog
+        // Fix for SQLSTATE[42S22]: Column not found: 1054 Unknown column 'generation_expression'
         if (Schema::hasTable('replenishment_backlog')) {
-            Schema::table('replenishment_backlog', function (Blueprint $table) {
-                if (!Schema::hasColumn('replenishment_backlog', 'committed_qty')) {
-                    $table->decimal('committed_qty', 10, 2)->default(0)->after('pending_qty');
-                }
-            });
+             $hasCommittedQty = count(\Illuminate\Support\Facades\DB::select("SHOW COLUMNS FROM replenishment_backlog LIKE 'committed_qty'")) > 0;
+             if (!$hasCommittedQty) {
+                 Schema::table('replenishment_backlog', function (Blueprint $table) {
+                     $table->decimal('committed_qty', 10, 2)->default(0)->after('pending_qty');
+                 });
+             }
         }
 
         // 2. Agregar purchase_order_id a replenishment_runs
         if (Schema::hasTable('replenishment_runs')) {
-            Schema::table('replenishment_runs', function (Blueprint $table) {
-                if (!Schema::hasColumn('replenishment_runs', 'purchase_order_id')) {
+             $hasPoId = count(\Illuminate\Support\Facades\DB::select("SHOW COLUMNS FROM replenishment_runs LIKE 'purchase_order_id'")) > 0;
+             if (!$hasPoId) {
+                Schema::table('replenishment_runs', function (Blueprint $table) {
                     $table->unsignedBigInteger('purchase_order_id')->nullable()->after('requisition_id');
                     $table->index('purchase_order_id');
-                }
-            });
+                });
+             }
         }
 
         // 3. Crear tabla purchase_orders

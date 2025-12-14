@@ -13,6 +13,7 @@ import { StockPage } from './modules/stock/StockPage';
 import { PurchasesModulePage } from './modules/compras/PurchasesModulePage';
 import { SoldTodayPage } from './modules/inventario/SoldTodayPage';
 import { ReplenishmentPage } from './modules/inventario/ReplenishmentPage';
+import { UsersPage } from './modules/usuarios/UsersPage';
 
 const Placeholder = ({ title }) => (
     <div className="flex h-full items-center justify-center text-slate-400">
@@ -33,6 +34,9 @@ const ErpRoutes = () => (
 
             {/* Parámetros -> Apariencia */}
             <Route path="/parametros" element={<ParamSettingsPage />} />
+
+            {/* Usuarios y Roles */}
+            <Route path="/usuarios" element={<UsersPage />} />
 
             {/* Productos */}
             <Route path="/productos" element={<ProductosListPage />} />
@@ -59,13 +63,17 @@ const ErpRoutes = () => (
     </LayoutShell>
 );
 
+import { AuthProvider } from './core/AuthContext';
+
 const ErpApp = () => {
     return (
-        <ThemeProvider>
-            <BrowserRouter basename="/erp">
-                <ErpRoutes />
-            </BrowserRouter>
-        </ThemeProvider>
+        <AuthProvider>
+            <ThemeProvider>
+                <BrowserRouter basename="/erp">
+                    <ErpRoutes />
+                </BrowserRouter>
+            </ThemeProvider>
+        </AuthProvider>
     );
 };
 

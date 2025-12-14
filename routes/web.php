@@ -200,6 +200,24 @@ Route::middleware('auth')->group(function () {
             Route::delete('/purchase-orders/{id}/attachments/{attachmentId}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'deleteAttachment']);
             Route::get('/purchase-orders/{id}/attachments/{attachmentId}/download', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'downloadAttachment']);
 
+            // Users & Roles
+            Route::get('/users', [\App\Http\Controllers\Erp\UserController::class, 'index']);
+            Route::post('/users', [\App\Http\Controllers\Erp\UserController::class, 'store']); // Create
+            Route::get('/users/meta', [\App\Http\Controllers\Erp\UserController::class, 'meta']);
+            Route::get('/users/{id}', [\App\Http\Controllers\Erp\UserController::class, 'show']);
+            Route::post('/users/{id}', [\App\Http\Controllers\Erp\UserController::class, 'update']);
+            Route::delete('/users/{id}', [\App\Http\Controllers\Erp\UserController::class, 'destroy']); // Delete
+
+            // Current User Endpoint for Frontend AuthContext
+            Route::get('/me', function (Illuminate\Http\Request $request) {
+                $user = $request->user();
+                return response()->json([
+                    'user' => $user,
+                    'roles' => $user->getRoleNames(),
+                    'permissions' => $user->getAllPermissions()->pluck('name'),
+                ]);
+            });
+
         });
 
         // Rutas Web ERP (Print, Exports, etc)

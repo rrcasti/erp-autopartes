@@ -11,12 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('productos', function (Blueprint $table) {
-            if (!Schema::hasColumn('productos', 'stock_minimo')) {
+        // Fix for SQLSTATE[42S22]: Column not found: 1054 Unknown column 'generation_expression'
+        // We avoid Schema::hasColumn() which triggers Doctrine DBAL introspection
+        
+        $hasStockMin = count(\Illuminate\Support\Facades\DB::select("SHOW COLUMNS FROM productos LIKE 'stock_minimo'")) > 0;
+        $hasPrecioCosto = count(\Illuminate\Support\Facades\DB::select("SHOW COLUMNS FROM productos LIKE 'precio_costo'")) > 0;
+
+        Schema::table('productos', function (Blueprint $table) use ($hasStockMin, $hasPrecioCosto) {
+            if (!$hasStockMin) {
                 $table->decimal('stock_minimo', 12, 2)->default(0)->after('stock_controlado');
             }
-            // Aseguramos costo por si acaso
-            if (!Schema::hasColumn('productos', 'precio_costo')) {
+            if (!$hasPrecioCosto) {
                  $table->decimal('precio_costo', 12, 2)->nullable()->after('precio_lista');
             }
         });
