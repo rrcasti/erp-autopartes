@@ -435,7 +435,15 @@ const PurchaseOrderDetailPage = () => {
     const hasPendingEdits = Object.keys(edits).length > 0;
 
     // Status Badge
-    const statusConfig = STATUS_MAP[po.status] || { label: po.status, color: 'bg-gray-100 text-gray-800' };
+    let statusConfig = STATUS_MAP[po.status] || { label: po.status, color: 'bg-gray-100 text-gray-800' };
+
+    // Detectar si fue reabierta con recepciones parciales previas
+    const isReopenedPartial = isDraft && po.items.some(i => parseFloat(i.quantity_received) > 0);
+    
+    // Override visual status for Reopened Partial
+    if (isReopenedPartial) {
+        statusConfig = { label: 'REABIERTA', color: 'bg-orange-100 text-orange-800 border-orange-200' };
+    }
 
     return (
         <div className="p-6 h-full flex flex-col bg-slate-50 dark:bg-slate-900 overflow-auto">
@@ -527,16 +535,7 @@ const PurchaseOrderDetailPage = () => {
                         <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
                         <span className="hidden sm:inline">Adjuntos</span>
                     </button>
-                    {!isDraft && !isClosed && (
-                        <button 
-                            onClick={handleForceClose} 
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded shadow text-sm font-medium"
-                            title="Forzar Cierre Administrativo: Usa esto si la orden no se va a completar."
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                            Cerrar Orden
-                        </button>
-                    )}
+
                     {isClosed && (
                         <button 
                             onClick={handleReopen} 
@@ -576,7 +575,18 @@ const PurchaseOrderDetailPage = () => {
             <div className="bg-white dark:bg-slate-800 rounded-lg shadow border border-slate-200 dark:border-slate-700 mb-6 flex flex-col flex-1 min-h-[600px] print:shadow-none print:border-0 print:block print:h-auto print:min-h-0">
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800 shrink-0 print:border-b-2 print:border-black print:bg-white print:px-0">
                     <h2 className="font-bold text-gray-700 dark:text-gray-300 print:text-black text-lg">Detalle de Productos</h2>
-                    {isDraft && hasPendingEdits && (
+                    <div className="flex items-center gap-2">
+                        {!isClosed && (!isDraft || isReopenedPartial) && (
+                            <button 
+                                onClick={handleForceClose} 
+                                className="text-xs font-bold text-slate-500 hover:text-slate-800 uppercase tracking-wide border border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 px-3 py-1 rounded shadow-sm flex items-center gap-1 transition-all"
+                                title="Cerrar orden manualmente"
+                            >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                Cerrar Orden
+                            </button>
+                        )}
+                        {isDraft && hasPendingEdits && (
                         <button 
                             onClick={handleSave} 
                             className="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow animate-pulse print:hidden"
@@ -585,6 +595,7 @@ const PurchaseOrderDetailPage = () => {
                             {saving ? 'Guardando...' : 'Guardar Cambios'}
                         </button>
                     )}
+                    </div>
                 </div>
                 
                 {/* Scrollable Area */}
@@ -670,15 +681,81 @@ const PurchaseOrderDetailPage = () => {
             {/* Historia de Eventos (Oculta al imprimir) */}
             <div className="mt-8 print:hidden">
                 <h3 className="text-lg font-bold text-gray-700 mb-4 px-2">Historial de Auditoría</h3>
-                <div className="bg-gray-50 dark:bg-slate-900 rounded p-4 space-y-3">
-                    {po.events && po.events.length > 0 ? po.events.map(ev => (
-                        <div key={ev.id} className="flex text-xs text-gray-600 gap-4 border-b border-gray-200 pb-2 last:border-0">
-                            <span className="font-mono">{new Date(ev.happened_at).toLocaleString()}</span>
-                            <span className="font-bold text-blue-600">{ev.event_type}</span>
-                            <span>{ev.user?.name || 'Usuario'}</span>
-                            <span className="text-gray-400 truncate max-w-xs">{JSON.stringify(ev.data)}</span>
-                        </div>
-                    )) : <p className="text-gray-400 text-sm">Sin eventos registrados.</p>}
+                <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase text-xs font-semibold">
+                            <tr>
+                                <th className="px-4 py-3 w-40">Fecha</th>
+                                <th className="px-4 py-3 w-40">Evento</th>
+                                <th className="px-4 py-3 w-32">Usuario</th>
+                                <th className="px-4 py-3">Detalles</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            {po.events && po.events.length > 0 ? po.events.map(ev => {
+                                // Parse data safely
+                                let details = {};
+                                try {
+                                    details = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+                                } catch (e) { details = { raw: ev.data }; }
+
+                                // Color coding for events
+                                // Estilo con fondo de color adaptado a modo oscuro (No blanco)
+                                const eventColor = {
+                                    'CREATED': 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600',
+                                    'CLOSED': 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-500',
+                                    'MANUAL_CLOSE': 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-500',
+                                    'CANCELLED': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border border-red-200 dark:border-red-800',
+                                    'REOPENED': 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800',
+                                    'MANUAL_REOPEN': 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800',
+                                    'ATTACHMENT_ADDED': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800', 
+                                    'MERCHANDISE_RECEIVED': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800',
+                                    'QTY_CHANGED': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 border border-orange-200 dark:border-orange-800',
+                                    'EMAIL_SENT': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-800',
+                                }[ev.event_type] || 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600';
+
+                                const eventTypeTranslations = {
+                                    'CREATED': 'Creada',
+                                    'CLOSED': 'Cerrada',
+                                    'MANUAL_CLOSE': 'Cierre Manual',
+                                    'CANCELLED': 'Cancelada',
+                                    'REOPENED': 'Reabierta',
+                                    'MANUAL_REOPEN': 'Reapertura Manual',
+                                    'ATTACHMENT_ADDED': 'Adjunto Agregado',
+                                    'MERCHANDISE_RECEIVED': 'Recepción Mercadería',
+                                    'QTY_CHANGED': 'Cambio Cantidad',
+                                    'EMAIL_SENT': 'Email Enviado',
+                                };
+
+                                return (
+                                    <tr key={ev.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                        <td className="px-4 py-3 font-mono text-xs text-slate-500 whitespace-nowrap">
+                                            {new Date(ev.happened_at).toLocaleDateString()} <span className="text-slate-400">{new Date(ev.happened_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${eventColor}`}>
+                                                {eventTypeTranslations[ev.event_type] || ev.event_type}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-700 dark:text-gray-300 font-medium whitespace-nowrap">
+                                            {ev.user?.name || 'Sistema'}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-slate-600 dark:text-gray-400 break-words font-mono">
+                                            {Object.entries(details || {}).map(([k, v]) => (
+                                                <div key={k} className="mb-0.5 last:mb-0">
+                                                    <span className="font-semibold text-slate-500">{k}:</span> <span className="text-slate-700 dark:text-slate-300">{JSON.stringify(v).replace(/^"|"$/g, '')}</span>
+                                                </div>
+                                            ))}
+                                        </td>
+                                    </tr>
+                                );
+                            }) : (
+                                <tr>
+                                    <td colSpan="4" className="px-4 py-8 text-center text-slate-400 italic">No hay registros de auditoría.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </div>
             
