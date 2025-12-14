@@ -111,7 +111,7 @@ export const RequisitionsPage = () => {
                                   </td>
                                   <td className="px-6 py-3">{new Date(r.created_at).toLocaleDateString()}</td>
                                   <td className="px-6 py-3 font-medium">{r.supplier?.razon_social || 'Desconocido'}</td>
-                                  <td className="px-6 py-3 font-mono">${r.expected_total}</td>
+                                  <td className="px-6 py-3 font-mono">${Number(r.expected_total || 0).toFixed(2)}</td>
                                   <td className="px-6 py-3"><StatusBadge status={r.status} /></td>
                                   <td className="px-6 py-3 text-right">
                                       <div className="flex justify-end items-center gap-2">

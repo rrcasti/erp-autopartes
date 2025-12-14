@@ -29,4 +29,8 @@ class PurchaseRequisition extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+    public function purchaseOrder()
+    {
+        return $this->hasOne(PurchaseOrder::class, 'requisition_id');
+    }
 }

@@ -7,19 +7,21 @@ const ReceiveModal = ({ order, onClose, onSuccess }) => {
             product_id: i.product_id, 
             name: i.product?.nombre || i.product_name,
             qty_pending: i.quantity_ordered - i.quantity_received, 
-            qty_to_receive: Math.max(0, i.quantity_ordered - i.quantity_received)
+            qty_to_receive: Math.max(0, i.quantity_ordered - i.quantity_received),
+            new_cost: i.unit_price || 0
         })) || []
     );
 
     const handleSubmit = async () => {
-        if(!confirm('¿Confirmar el ingreso de mercadería al stock?')) return;
+        if(!confirm('¿Confirmar el ingreso de mercadería al stock con los costos actualizados?')) return;
 
         const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
         const payload = {
             items: items.filter(m => m.qty_to_receive > 0).map(m => ({ 
                 id: m.id, 
-                receive_qty: Number(m.qty_to_receive) 
+                receive_qty: Number(m.qty_to_receive),
+                new_cost: Number(m.new_cost)
             }))
         };
         
@@ -51,31 +53,32 @@ const ReceiveModal = ({ order, onClose, onSuccess }) => {
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <h3 className="text-xl font-bold mb-4 text-slate-800 dark:text-white">Recibir Mercadería - OC #{order.id}</h3>
                 
                 <div className="flex-1 overflow-auto border rounded dark:border-slate-700">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-100 dark:bg-slate-700 text-xs uppercase sticky top-0">
+                        <thead className="bg-slate-100 dark:bg-slate-700 text-xs uppercase sticky top-0 z-10">
                             <tr>
                                 <th className="px-4 py-2">Producto</th>
                                 <th className="px-4 py-2 text-right">Pedido</th>
                                 <th className="px-4 py-2 text-right">Pendiente</th>
-                                <th className="px-4 py-2 text-right w-32">A Ingresar</th>
+                                <th className="px-4 py-2 text-right w-28">A Ingresar</th>
+                                <th className="px-4 py-2 text-right w-32">Costo (Unit.)</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {items.map((item, idx) => (
-                                <tr key={item.product_id}>
-                                    <td className="px-4 py-2 max-w-xs">{item.name}</td>
+                                <tr key={item.product_id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                    <td className="px-4 py-2 max-w-xs font-medium text-slate-700 dark:text-slate-200">{item.name}</td>
                                     <td className="px-4 py-2 text-right text-slate-500">{item.qty_pending + (item.qty_ordered_original || 0)}</td> 
-                                    <td className="px-4 py-2 text-right font-medium">{item.qty_pending}</td>
+                                    <td className="px-4 py-2 text-right font-bold">{item.qty_pending}</td>
                                     <td className="px-4 py-2">
                                         <input 
                                             type="number" 
                                             min="0"
                                             max={item.qty_pending}
-                                            className="w-full border rounded px-2 py-1 text-right dark:bg-slate-700 dark:border-slate-600"
+                                            className="w-full border rounded px-2 py-1 text-right font-bold text-emerald-600 bg-emerald-50 border-emerald-200 focus:ring-emerald-500 focus:border-emerald-500"
                                             value={item.qty_to_receive}
                                             onChange={e => {
                                                 const newItems = [...items];
@@ -84,15 +87,36 @@ const ReceiveModal = ({ order, onClose, onSuccess }) => {
                                             }}
                                         />
                                     </td>
+                                    <td className="px-4 py-2">
+                                        <div className="relative rounded-md shadow-sm">
+                                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
+                                                <span className="text-gray-500 sm:text-xs">$</span>
+                                            </div>
+                                            <input 
+                                                type="number" 
+                                                step="0.01"
+                                                min="0"
+                                                className="block w-full rounded border-gray-300 pl-5 px-2 py-1 text-right focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                                value={item.new_cost}
+                                                onChange={e => {
+                                                    const newItems = [...items];
+                                                    newItems[idx].new_cost = e.target.value;
+                                                    setItems(newItems);
+                                                }}
+                                            />
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
 
-                <div className="flex justify-end gap-3 mt-6">
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-slate-700">
                     <button onClick={onClose} className="px-4 py-2 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-700">Cancelar</button>
-                    <button onClick={handleSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 font-medium">Confirmar Ingreso</button>
+                    <button onClick={handleSubmit} className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 font-medium shadow-sm transition-colors">
+                        Confirmar Ingreso y Costos
+                    </button>
                 </div>
             </div>
         </div>

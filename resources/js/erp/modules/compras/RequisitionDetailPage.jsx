@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 
 const RequisitionDetailPage = () => {
     const { id } = useParams();
@@ -58,26 +58,35 @@ const RequisitionDetailPage = () => {
                     <button onClick={() => navigate('/compras/solicitudes')} className="text-sm text-indigo-600 mb-2 hover:underline">
                         &larr; Volver al listado
                     </button>
-                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-3">
                         Solicitud REQ-{req.id}
+                        {req.status === 'converted' && <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded border border-emerald-200 uppercase tracking-widest font-bold">Procesada</span>}
                     </h1>
-                    <p className="text-sm text-slate-500">
-                        Estado: <span className="font-bold uppercase">{req.status}</span> | 
-                        Fecha: {new Date(req.created_at).toLocaleDateString()}
+                    <p className="text-sm text-slate-500 mt-1 flex items-center gap-4">
+                        <span>
+                            <span className="font-semibold">Fecha:</span> {new Date(req.created_at).toLocaleString()}
+                        </span>
+                        <span>
+                            <span className="font-semibold">Creado por:</span> {req.creator?.name || 'Sistema'}
+                        </span>
                     </p>
                 </div>
                 <div>
-                    {req.status !== 'converted' ? (
+                    {req.purchase_order_id ? (
+                        <Link 
+                            to={`/compras/ordenes/${req.purchase_order_id}`}
+                            className="inline-flex items-center gap-2 bg-white border-2 border-emerald-500 text-emerald-700 px-4 py-2 rounded-lg shadow-sm hover:bg-emerald-50 transition font-bold"
+                        >
+                            <span>Ver Orden Generada #{req.po_number || req.purchase_order_id}</span>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        </Link>
+                    ) : (
                         <button 
                             onClick={handleCreatePO}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded shadow font-medium"
                         >
                             Generar Orden de Compra
                         </button>
-                    ) : (
-                        <span className="text-emerald-600 font-bold border border-emerald-200 bg-emerald-50 px-3 py-1 rounded">
-                            Orden Generada
-                        </span>
                     )}
                 </div>
             </div>

@@ -96,7 +96,7 @@ class PurchaseOrderController extends Controller
                 // Prioridad: Costo Reposición > Costo Promedio > 0
                 $unitPrice = 0;
                 if ($product) {
-                    $unitPrice = $product->costo_reposicion > 0 ? $product->costo_reposicion : ($product->costo_promedio ? $product->costo_promedio : 0);
+                    $unitPrice = $product->costo_ultima_compra > 0 ? $product->costo_ultima_compra : ($product->costo_promedio ? $product->costo_promedio : 0);
                 }
                 
                 $quantity = $reqItem->quantity_suggested ?? 1;
@@ -555,6 +555,7 @@ class PurchaseOrderController extends Controller
             'items' => 'required|array',
             'items.*.id' => 'required|exists:purchase_order_items,id',
             'items.*.receive_qty' => 'required|numeric|min:0',
+            'items.*.new_cost' => 'nullable|numeric|min:0',
         ]);
 
         $po = PurchaseOrder::with('items')->findOrFail($id);
@@ -571,6 +572,8 @@ class PurchaseOrderController extends Controller
             
             foreach ($request->items as $income) {
                 $qty = floatval($income['receive_qty']);
+                $newCost = isset($income['new_cost']) ? floatval($income['new_cost']) : null;
+
                 if ($qty <= 0) continue;
 
                 $item = $po->items->where('id', $income['id'])->first();
@@ -580,11 +583,31 @@ class PurchaseOrderController extends Controller
 
                 // 1. Update PO Item
                 $item->quantity_received += $qty;
+                // Si viene nuevo costo, actualizamos el precio unitario del item de la orden como registro histórico
+                if ($newCost !== null && $newCost > 0) {
+                    $item->unit_price = $newCost;
+                }
                 $item->save();
 
-                // 2. Update Stock Físico
+                // 2. Update Stock Físico y Costos
                 $product = \App\Models\Producto::find($item->product_id);
                 if ($product) {
+                    // Actualizar Costos si corresponde
+                    if ($newCost !== null && $newCost > 0) {
+                        // Recalcular costo promedio ponderado ANTES de sumar el stock
+                        $currentStock = $product->stock_disponible; 
+                        $currentAvgCost = $product->costo_promedio;
+                        
+                        // Evitar division por cero logic
+                        $totalValue = ($currentStock * $currentAvgCost) + ($qty * $newCost);
+                        $totalQty = $currentStock + $qty;
+                        
+                        $newAvgCost = $totalQty > 0 ? $totalValue / $totalQty : $newCost;
+                        
+                        $product->costo_promedio = $newAvgCost;
+                        $product->costo_ultima_compra = $newCost; // Ultimo costo
+                    }
+
                     // Usamos increment para atomicidad
                     $newStock = $product->stock_disponible + $qty;
                     $product->stock_disponible = $newStock;
@@ -602,7 +625,7 @@ class PurchaseOrderController extends Controller
                             'reference_id' => $po->id,
                             'reference_type' => 'purchase_order', // Polymorphic field often used
                             'user_id' => Auth::id() ?: 1,
-                            'reason' => 'Recepcion Ord #' . $po->po_number
+                            'reason' => 'Recepcion Ord #' . $po->po_number . ($newCost ? " (Costo act: $$newCost)" : "")
                         ]);
                     } catch (\Throwable $t) {
                         // Ignoramos error de logueo de stock movement si faltan columnas, pero stock sí se actualizó
@@ -612,7 +635,8 @@ class PurchaseOrderController extends Controller
                     $receivedLog[] = [
                         'sku' => $product->sku_interno ?: $item->product_id,
                         'name' => $product->nombre,
-                        'qty' => $qty
+                        'qty' => $qty,
+                        'new_cost' => $newCost
                     ];
                 }
 
@@ -667,5 +691,109 @@ class PurchaseOrderController extends Controller
             DB::rollBack();
             return response()->json(['error' => 'Error al recibir: ' . $e->getMessage()], 500);
         }
+    }
+
+    // --- ATTACHMENTS ---
+
+    public function getAttachments($id)
+    {
+        $po = PurchaseOrder::findOrFail($id);
+        $attachments = \App\Models\PurchaseOrderAttachment::where('purchase_order_id', $id)
+            ->with('uploader:id,name')
+            ->orderBy('created_at', 'desc')
+            ->get();
+            
+        return response()->json($attachments);
+    }
+
+    public function uploadAttachment(Request $request, $id)
+    {
+        $request->validate([
+            'file' => 'required|file|max:10240|mimes:jpeg,png,jpg,pdf,webp', // 10MB max
+        ]);
+
+        $po = PurchaseOrder::findOrFail($id);
+
+        if (!$request->hasFile('file')) {
+            return response()->json(['error' => 'No se ha subido ningún archivo.'], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            $file = $request->file('file');
+            $filename = $file->getClientOriginalName();
+            $path = $file->storePublicly('attachments/orders/' . $id, 'public');
+
+            $attachment = \App\Models\PurchaseOrderAttachment::create([
+                'purchase_order_id' => $po->id,
+                'file_name' => $filename,
+                'file_path' => '/storage/' . $path, // Assumes storage link is set up
+                'file_type' => $file->getClientMimeType(),
+                'file_size' => $file->getSize(),
+                'uploaded_by' => Auth::id() ?: 1,
+            ]);
+
+            // Optional: Log event
+            // Register Audit Event
+            \App\Models\PurchaseOrderEvent::create([
+                 'purchase_order_id' => $po->id,
+                 'event_type' => 'ATTACHMENT_ADDED',
+                 'data' => ['file' => $filename], // Eloquent casts to array/json usually
+                 'user_id' => \Illuminate\Support\Facades\Auth::id() ?: 1,
+                 'happened_at' => now(), // Important field often validation required
+            ]);
+
+            DB::commit();
+            
+            // Return with uploader for immediate display
+            $attachment->load('uploader:id,name');
+            return response()->json([
+                'success' => true, 
+                'message' => 'Archivo adjuntado correctamente.',
+                'attachment' => $attachment
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['error' => 'Error al subir: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function deleteAttachment($id, $attachmentId)
+    {
+        $att = \App\Models\PurchaseOrderAttachment::where('id', $attachmentId)
+            ->where('purchase_order_id', $id)
+            ->firstOrFail();
+
+        try {
+            // Delete file from disk
+            $relativePath = str_replace('/storage/', '', $att->file_path);
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($relativePath);
+            
+            $att->delete();
+            
+            return response()->json(['success' => true, 'message' => 'Adjunto eliminado.']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error al eliminar: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function downloadAttachment($id, $attachmentId)
+    {
+        $att = \App\Models\PurchaseOrderAttachment::where('id', $attachmentId)
+            ->where('purchase_order_id', $id)
+            ->firstOrFail();
+
+        // Check if file exists in storage (remove /storage/ prefix stored in DB to get relative disk path)
+        $relativePath = str_replace('/storage/', '', $att->file_path);
+        
+        if (!\Illuminate\Support\Facades\Storage::disk('public')->exists($relativePath)) {
+            // Fallback for older files or manual usage?
+            return response()->json(['error' => 'Archivo no encontrado en disco.'], 404);
+        }
+
+        // Serve file inline to allow preview in browser/img tag
+        $fullPath = \Illuminate\Support\Facades\Storage::disk('public')->path($relativePath);
+        return response()->file($fullPath);
     }
 }

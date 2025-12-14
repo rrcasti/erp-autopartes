@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import AttachmentsModal from './AttachmentsModal';
 
 const STATUS_MAP = {
     'DRAFT': { label: 'BORRADOR', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
@@ -217,6 +218,9 @@ const PurchaseOrderDetailPage = () => {
     // Email Modal State
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
     const [sendingEmail, setSendingEmail] = useState(false);
+
+    // Attachments Modal State
+    const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(false);
 
     // Receive Modal State
     const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -515,6 +519,14 @@ const PurchaseOrderDetailPage = () => {
                 </div>
                 
                 <div className="flex gap-2 print:hidden">
+                    <button 
+                        onClick={() => setIsAttachmentsOpen(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded shadow hover:bg-gray-50 text-gray-700 text-sm font-medium"
+                        title="Adjuntar Documentos (Facturas, Remitos)"
+                    >
+                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                        <span className="hidden sm:inline">Adjuntos</span>
+                    </button>
                     {!isDraft && !isClosed && (
                         <button 
                             onClick={handleForceClose} 
@@ -549,7 +561,7 @@ const PurchaseOrderDetailPage = () => {
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                                 Enviar a Proveedor
                             </button>
-                            {!isClosed && !isCancelled && (
+                            {!isClosed && (
                                 <button onClick={handleReceiveClick} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow text-sm font-bold">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
                                     Recibir Mercadería
@@ -676,6 +688,12 @@ const PurchaseOrderDetailPage = () => {
             </div>
             
             </div> {/* Cierre invoice-print-area */}
+
+            <AttachmentsModal 
+                isOpen={isAttachmentsOpen} 
+                onClose={() => setIsAttachmentsOpen(false)} 
+                poId={po.id} 
+            />
             
             <EmailModal 
                 isOpen={isEmailModalOpen} 

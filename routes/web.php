@@ -193,6 +193,12 @@ Route::middleware('auth')->group(function () {
             Route::post('/purchase-orders/{id}/reopen', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'reopen']);
             Route::post('/purchase-orders/{id}/receive', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'receiveItems']);
             Route::delete('/purchase-orders/{id}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'destroy']);
+            
+            // Adjuntos / Attachments
+            Route::get('/purchase-orders/{id}/attachments', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'getAttachments']);
+            Route::post('/purchase-orders/{id}/attachments', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'uploadAttachment']);
+            Route::delete('/purchase-orders/{id}/attachments/{attachmentId}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'deleteAttachment']);
+            Route::get('/purchase-orders/{id}/attachments/{attachmentId}/download', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'downloadAttachment']);
 
         });
 

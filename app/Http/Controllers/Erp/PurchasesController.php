@@ -41,15 +41,26 @@ class PurchasesController extends Controller
         \Illuminate\Support\Facades\Log::info("INDEX REQUISITIONS HIT");
         try {
             // Listar requisiciones
-            $reqs = PurchaseRequisition::with('creator')->latest()->get();
+            $reqs = PurchaseRequisition::with(['creator', 'items.product'])->latest()->get();
             \Illuminate\Support\Facades\Log::info("Requisitions found: " . $reqs->count());
             
             // Mapear para frontend
             $data = $reqs->map(function($r) {
+                // Calcular total estimado
+                $totalEstimated = $r->items->sum(function($item) {
+                     $prod = $item->product;
+                     $qty = $item->suggested_qty ?: ($item->quantity ?: 0); // Manejar ambos nombres de columna por si acaso
+                     $cost = 0;
+                     if ($prod) {
+                         $cost = $prod->costo_ultima_compra > 0 ? $prod->costo_ultima_compra : ($prod->costo_promedio ?: 0);
+                     }
+                     return $qty * $cost;
+                });
+
                 return [
                     'id' => $r->id,
                     'created_at' => $r->created_at,
-                    'expected_total' => 0, 
+                    'expected_total' => round($totalEstimated, 2), 
                     'status' => $r->status,
                     'supplier' => null,
                     'created_by_name' => $r->creator ? $r->creator->name : 'Sistema'
@@ -65,8 +76,8 @@ class PurchasesController extends Controller
 
     public function showRequisition($id)
     {
-        // Cargar items, producto y la relación de precios/códigos de proveedor
-        $req = PurchaseRequisition::with(['items.product.productosProveedores'])->findOrFail($id);
+        // Cargar items, producto, creador, orden de compra y la relación de precios/códigos de proveedor
+        $req = PurchaseRequisition::with(['items.product.productosProveedores', 'creator', 'purchaseOrder'])->findOrFail($id);
         
         // Transformar items para facilitar consumo en frontend
         $req->items->transform(function($item) {
@@ -91,6 +102,12 @@ class PurchasesController extends Controller
             
             return $item;
         });
+
+        // Asegurar que la orden de compra se envíe si existe
+        if($req->purchaseOrder) {
+            $req->purchase_order_id = $req->purchaseOrder->id;
+            $req->po_number = $req->purchaseOrder->po_number;
+        }
 
         return response()->json($req);
     }
