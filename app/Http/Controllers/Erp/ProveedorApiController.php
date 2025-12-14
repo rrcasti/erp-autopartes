@@ -80,18 +80,18 @@ class ProveedorApiController extends Controller
         if ($pp) {
             // Actualizar existente
             $pp->update([
-                'sku_proveedor' => $data['sku_proveedor'] ?? null,
+                'sku_proveedor' => isset($data['sku_proveedor']) ? $data['sku_proveedor'] : null,
                 'precio_lista'  => $data['precio_lista'],
-                'activo'        => $data['activo'] ?? true,
+                'activo'        => isset($data['activo']) ? $data['activo'] : true,
             ]);
         } else {
             // Crear nuevo
             $pp = ProductoProveedor::create([
                 'producto_id'   => $producto->id,
                 'proveedor_id'  => $data['proveedor_id'],
-                'sku_proveedor' => $data['sku_proveedor'] ?? null,
+                'sku_proveedor' => isset($data['sku_proveedor']) ? $data['sku_proveedor'] : null,
                 'precio_lista'  => $data['precio_lista'],
-                'activo'        => $data['activo'] ?? true,
+                'activo'        => isset($data['activo']) ? $data['activo'] : true,
             ]);
 
             // Actualizar costo_ultima_compra del producto (si es el primero)

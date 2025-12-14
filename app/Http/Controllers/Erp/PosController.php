@@ -89,7 +89,7 @@ class PosController extends Controller
 
         return DB::transaction(function () use ($payload, $stockService) {
             // 1. Resolver Cliente
-            $customer = $this->resolveCustomer($payload['customer'] ?? []);
+            $customer = $this->resolveCustomer(isset($payload['customer']) ? $payload['customer'] : []);
 
             // 2. Generar Número Comprobante (Simple serial para MVP)
             // Idealmente: tabla de secuencias por sucursal. Aquí: max id + 1 o UUID corto.
@@ -112,11 +112,11 @@ class PosController extends Controller
             foreach ($payload['items'] as $item) {
                 SaleItem::create([
                     'sale_id' => $sale->id,
-                    'producto_id' => $item['product_id'] ?? null,
+                    'producto_id' => isset($item['product_id']) ? $item['product_id'] : null,
                     'producto_nombre' => $item['name'],
-                    'marca_nombre' => $item['brand_name'] ?? 'Genérica',
+                    'marca_nombre' => isset($item['brand_name']) ? $item['brand_name'] : 'Genérica',
                     'codigo_barra' => $item['barcode'],
-                    'sku' => $item['sku'] ?? null,
+                    'sku' => isset($item['sku']) ? $item['sku'] : null,
                     'cantidad' => $item['quantity'],
                     'precio_unitario' => $item['price'],
                     'alicuota_iva' => 21.00, 
@@ -163,7 +163,7 @@ class PosController extends Controller
             // IMPORTANTE: Cargar items recién creados para que aparezcan en el mensaje
             $sale->load('items');
             
-            $phoneInput = $data['customer']['phone'] ?? null;
+            $phoneInput = isset($data['customer']['phone']) ? $data['customer']['phone'] : null;
             $waData = $this->generateWhatsAppLink($sale, $customer, $phoneInput);
             $printUrl = route('pos.print', ['id' => $sale->id]);
 
@@ -174,7 +174,7 @@ class PosController extends Controller
                         'id' => $sale->id,
                         'receipt_number' => $posNumber,
                         'date' => $sale->fecha->format('d/m/Y H:i'),
-                        'seller' => Auth::user()->name ?? 'Vendedor',
+                        'seller' => (Auth::user() && Auth::user()->name) ? Auth::user()->name : 'Vendedor',
                     ],
                     'customer' => [
                         'name' => $customer ? $customer->nombre : 'Consumidor Final',
@@ -223,9 +223,9 @@ class PosController extends Controller
         }
         return Customer::create([
             'nombre' => $data['name'],
-            'celular' => $data['phone'] ?? null,
-            'direccion' => $data['address'] ?? null,
-            'email' => $data['email'] ?? null,
+            'celular' => isset($data['phone']) ? $data['phone'] : null,
+            'direccion' => isset($data['address']) ? $data['address'] : null,
+            'email' => isset($data['email']) ? $data['email'] : null,
         ]);
     }
 
@@ -238,8 +238,8 @@ class PosController extends Controller
             'barcode' => $p->codigo_barra,
             'brand_name' => $p->marca ? $p->marca->nombre : 'Genérico',
             'provider_name' => $p->proveedor ? $p->proveedor->razon_social : null,
-            'stock' => $p->stock_disponible ?? 0,
-            'price' => (float) (($p->precio_venta_mostrador && $p->precio_venta_mostrador > 0) ? $p->precio_venta_mostrador : ($p->precio_lista ?? 0)),
+            'stock' => isset($p->stock_disponible) ? $p->stock_disponible : 0,
+            'price' => (float) (($p->precio_venta_mostrador && $p->precio_venta_mostrador > 0) ? $p->precio_venta_mostrador : (isset($p->precio_lista) ? $p->precio_lista : 0)),
         ];
     }
 
