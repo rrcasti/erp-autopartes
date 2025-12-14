@@ -51,7 +51,7 @@ class PurchaseOrderController extends Controller
                 $prod = \App\Models\Producto::find($firstItem->product_id);
                 if ($prod) {
                     // Intentamos proveedor_id o proveedor_principal_id
-                    $supplierId = $prod->proveedor_id ?? $prod->proveedor_principal_id; 
+                    $supplierId = $prod->proveedor_id ? $prod->proveedor_id : $prod->proveedor_principal_id; 
                 }
             }
 
@@ -150,7 +150,7 @@ class PurchaseOrderController extends Controller
             $po = PurchaseOrder::findOrFail($id);
             
             // Cargar relaciones paso a paso para evitar fallo total
-            try { $po->load('items.product'); } catch(\Throwable $t) { \Illuminate\Support\Facades\Log::error("Error loading items: " . $t->getMessage()); }
+            try { $po->load(['items.product.proveedor']); } catch(\Throwable $t) { \Illuminate\Support\Facades\Log::error("Error loading items relations: " . $t->getMessage()); }
             try { $po->load('supplier'); } catch(\Throwable $t) {}
             try { $po->load('creator'); } catch(\Throwable $t) {}
             try { $po->load('events.user'); } catch(\Throwable $t) {}
@@ -162,8 +162,14 @@ class PurchaseOrderController extends Controller
                      $prod = $item->product;
                      $item->product_name = $prod ? $prod->nombre : ('Prod #' . $item->product_id);
                      $item->product_sku = $prod ? ($prod->sku_interno ?: $prod->sku) : '';
+                     $item->supplier_name = ($prod && $prod->proveedor) ? $prod->proveedor->razon_social : '-';
                 });
             }
+
+            // Calcular total en tiempo real (útil por si hubo cambios de precios/cantidades)
+            $po->calculated_total = $po->items->sum(function($item) {
+                return $item->quantity_ordered * $item->unit_price;
+            });
             
             return response()->json($po);
         } catch (\Throwable $e) {
