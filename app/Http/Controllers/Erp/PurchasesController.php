@@ -12,6 +12,30 @@ class PurchasesController extends Controller
 {
     // --- REQUISICIONES ---
 
+    public function destroyRequisition($id)
+    {
+        try {
+            $req = PurchaseRequisition::findOrFail($id);
+            // El usuario quiere control total: Se permite borrar CUALQUIER estado.
+            
+            DB::transaction(function () use ($req) {
+                 // 1. Desvincular Órdenes de Compra asociadas (para no dejar referencias rotas)
+                 \App\Models\PurchaseOrder::where('requisition_id', $req->id)->update(['requisition_id' => null]);
+
+                 // 2. Desvincular Runs de Reposición
+                 \App\Models\ReplenishmentRun::where('requisition_id', $req->id)->update(['requisition_id' => null]);
+
+                 // 3. Borrar
+                 $req->items()->delete();
+                 $req->delete();
+            });
+            
+            return response()->json(['message' => 'Solicitud eliminada correctamente.']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Error al eliminar: ' . $e->getMessage()], 500);
+        }
+    }
+
     public function indexRequisitions()
     {
         \Illuminate\Support\Facades\Log::info("INDEX REQUISITIONS HIT");

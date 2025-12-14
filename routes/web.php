@@ -161,6 +161,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/inventory/replenishment/runs', [\App\Http\Controllers\Erp\InventoryController::class, 'listReplenishmentRuns']);
             Route::post('/inventory/replenishment/runs/generate', [\App\Http\Controllers\Erp\InventoryController::class, 'generateReplenishmentRun']);
             Route::post('/inventory/replenishment/runs/{id}/close', [\App\Http\Controllers\Erp\InventoryController::class, 'closeReplenishmentRun']);
+            Route::delete('/inventory/replenishment/runs/{id}', [\App\Http\Controllers\Erp\InventoryController::class, 'destroyRun']);
             
             Route::post('/inventory/adjust', [\App\Http\Controllers\Erp\InventoryController::class, 'adjustStock']);
 
@@ -179,6 +180,7 @@ Route::middleware('auth')->group(function () {
             // Reactivamos SOLO las de lectura corregidas:
             Route::get('/purchases/requisitions', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexRequisitions']);
             Route::get('/purchases/requisitions/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'showRequisition']);
+            Route::delete('/purchases/requisitions/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'destroyRequisition']);
             Route::get('/purchases/orders', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexOrders']); // Esta ya la corregimos para leer DB real
             
             // --- NUEVO SISTEMA DE ORDENES DE COMPRA REAL ---
@@ -187,6 +189,10 @@ Route::middleware('auth')->group(function () {
             Route::patch('/purchase-orders/{id}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'update']);
             Route::post('/purchase-orders/{id}/export', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'export']);
             Route::post('/purchase-orders/{id}/email', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'sendEmail']);
+            Route::post('/purchase-orders/{id}/close', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'forceClose']);
+            Route::post('/purchase-orders/{id}/reopen', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'reopen']);
+            Route::post('/purchase-orders/{id}/receive', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'receiveItems']);
+            Route::delete('/purchase-orders/{id}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'destroy']);
 
         });
 

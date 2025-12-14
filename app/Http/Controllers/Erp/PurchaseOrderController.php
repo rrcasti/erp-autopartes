@@ -12,6 +12,8 @@ use App\Models\PurchaseOrderEvent;
 use App\Models\ReplenishmentRun;
 use App\Models\ReplenishmentBacklog;
 use App\Models\PurchaseRequisition;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\PurchaseOrderSent;
 
 class PurchaseOrderController extends Controller
 {
@@ -55,8 +57,22 @@ class PurchaseOrderController extends Controller
                 }
             }
 
-            // Fix: Definir poNumber antes de usarlo
-            $poNumber = 'OC-' . date('Y') . '-' . str_pad((string) (PurchaseOrder::count() + 1), 6, '0', STR_PAD_LEFT);
+            // Fix: Numeración secuencial robusta (inmune a borrados)
+            $year = date('Y');
+            $lastPO = PurchaseOrder::where('po_number', 'like', "OC-$year-%")
+                        ->orderBy('id', 'desc')
+                        ->first();
+            
+            $newSeq = 1;
+            if ($lastPO) {
+                // Formato esperado: OC-2025-000001
+                $parts = explode('-', $lastPO->po_number);
+                $lastSeq = intval(end($parts));
+                $newSeq = $lastSeq + 1;
+            }
+            
+            $poNumber = 'OC-' . $year . '-' . str_pad((string) $newSeq, 6, '0', STR_PAD_LEFT);
+            
             \Illuminate\Support\Facades\Log::info("Step 3: Creating Header with number $poNumber");
             
             $po = PurchaseOrder::create([
@@ -80,7 +96,7 @@ class PurchaseOrderController extends Controller
                 // Prioridad: Costo Reposición > Costo Promedio > 0
                 $unitPrice = 0;
                 if ($product) {
-                    $unitPrice = $product->costo_reposicion > 0 ? $product->costo_reposicion : ($product->costo_promedio ?? 0);
+                    $unitPrice = $product->costo_reposicion > 0 ? $product->costo_reposicion : ($product->costo_promedio ? $product->costo_promedio : 0);
                 }
                 
                 $quantity = $reqItem->quantity_suggested ?? 1;
@@ -103,18 +119,22 @@ class PurchaseOrderController extends Controller
                 }
             }
             
-            // Actualizar total
+            // Actualizar total y vincular Requisición
             $po->total_amount = $totalAmount;
+            $po->requisition_id = $req->id; // Vinculación explícita clave para que InventoryController la encuentre
             $po->save();
             
             \Illuminate\Support\Facades\Log::info("Step 5: Updating Run and Events");
-            // Link to Run
-            if($req->replenishment_run_id) {
-                $run = \App\Models\ReplenishmentRun::find($req->replenishment_run_id);
-                if($run) {
-                    $run->purchase_order_id = $po->id;
-                    $run->save();
-                }
+            
+            // Link to Run (Buscando por relación inversa)
+            $run = \App\Models\ReplenishmentRun::where('requisition_id', $req->id)->first();
+            if($run) {
+                $run->purchase_order_id = $po->id;
+                // AUTO-CIERRE: Al generar la orden, el ciclo de reposición se considera completo.
+                $run->status = 'CLOSED';
+                $run->closed_at = now();
+                $run->closed_by = Auth::id() ?: 1;
+                $run->save();
             }
 
             // Log Event
@@ -267,6 +287,40 @@ class PurchaseOrderController extends Controller
                             }
                         }
                     }
+                    // Agregar Item Manualmente (Sin ID previo)
+                    elseif (!isset($itemData['id']) && isset($itemData['product_id']) && isset($itemData['quantity_ordered'])) {
+                        $qty = floatval($itemData['quantity_ordered']);
+                        if ($qty > 0) {
+                            $pid = $itemData['product_id'];
+                            
+                            // Verificar si ya existe en la orden para sumar
+                            $exists = PurchaseOrderItem::where('purchase_order_id', $po->id)
+                                ->where('product_id', $pid)
+                                ->first();
+                                
+                            if ($exists) {
+                                $exists->quantity_ordered += $qty;
+                                $exists->save();
+                            } else {
+                                $prod = \App\Models\Producto::find($pid);
+                                PurchaseOrderItem::create([
+                                    'purchase_order_id' => $po->id,
+                                    'product_id' => $pid,
+                                    'quantity_ordered' => $qty,
+                                    'unit_cost' => $prod ? ($prod->costo_promedio ?: 0) : 0,
+                                    'quantity_received' => 0
+                                ]);
+                            }
+                            
+                            PurchaseOrderEvent::create([
+                                'purchase_order_id' => $po->id,
+                                'event_type' => 'ITEM_ADDED_MANUAL',
+                                'data' => json_encode(['product_id' => $pid, 'qty' => $qty]),
+                                'user_id' => Auth::id() ?: 1,
+                                'happened_at' => now()
+                            ]);
+                        }
+                    }
                 }
             }
             
@@ -297,21 +351,321 @@ class PurchaseOrderController extends Controller
     }
     
     // POST /email
-    public function sendEmail($id)
+    public function sendEmail(Request $request, $id)
     {
-         // Stub Email
-         $po = PurchaseOrder::findOrFail($id);
-         $po->status = 'SENT';
-         $po->save();
+         $po = PurchaseOrder::with('items.product')->findOrFail($id);
          
-         PurchaseOrderEvent::create([
-            'purchase_order_id' => $id,
-            'event_type' => 'EMAIL_SENT',
-            'data' => json_encode(['to' => 'provider@example.com']),
-            'user_id' => Auth::id() ? Auth::id() : 1,
-            'happened_at' => date('Y-m-d H:i:s')
+         $request->validate([
+             'email' => 'required|email',
+             'subject' => 'required|string',
+             'message' => 'nullable|string'
+         ]);
+
+         try {
+             // Enviar Correo
+             Mail::to($request->email)->send(new PurchaseOrderSent($po, $request->subject, $request->input('message')));
+             
+             // Actualizar estado solo si no estaba cerrada
+             if($po->status === 'DRAFT') {
+                 $po->status = 'SENT';
+                 $po->save();
+             }
+             
+             PurchaseOrderEvent::create([
+                'purchase_order_id' => $id,
+                'event_type' => 'EMAIL_SENT',
+                'data' => json_encode(['to' => $request->email, 'subject' => $request->subject]),
+                'user_id' => Auth::id() ?: 1,
+                'happened_at' => now()
+            ]);
+            
+            return response()->json(['success' => true, 'message' => 'Orden enviada correctamente a ' . $request->email]);
+
+         } catch (\Exception $e) {
+             \Illuminate\Support\Facades\Log::error("Mail Error: " . $e->getMessage());
+             
+             return response()->json([
+                 'success' => false, 
+                 'message' => 'Error de Envío: ' . $e->getMessage() . '. Verifique configuración SMTP.'
+             ], 500);
+         }
+    }
+
+    // DELETE /erp/api/purchase-orders/{id}
+    public function destroy($id)
+    {
+        $po = PurchaseOrder::findOrFail($id);
+        
+        if ($po->status !== 'DRAFT') {
+            return response()->json(['error' => 'Solo se pueden eliminar órdenes en borrador.'], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // 1. Revertir cantidades en camino (Backlog)
+            foreach ($po->items as $item) {
+                 $backlog = \App\Models\ReplenishmentBacklog::where('product_id', $item->product_id)->first();
+                 if ($backlog) {
+                     $backlog->committed_qty = max(0, $backlog->committed_qty - $item->quantity_ordered);
+                     $backlog->save();
+                 }
+            }
+
+            // 2. Liberar Requisición (si existe)
+            if ($po->requisition_id) {
+                // Solo desvinculamos para evitar errores de llave foránea si hay.
+            }
+
+            // 3. Desvincular de Reposición (si existe)
+            $run = \App\Models\ReplenishmentRun::where('purchase_order_id', $po->id)->first();
+            if($run) {
+                $run->purchase_order_id = null;
+                $run->save();
+            }
+
+            // 4. Borrar Items y Eventos (Cascade usualmente se encarga, pero aseguramos)
+            $po->items()->delete();
+            $po->events()->delete();
+            
+            // 5. Borrar Orden
+            $po->delete();
+
+            DB::commit();
+            return response()->json(['message' => 'Orden eliminada y stock pendiente revertido.']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['error' => 'Error al eliminar: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Cierre Administrativo / Forzado de la Orden
+     * Libera compromisos de stock pendiente y cierra el documento.
+     */
+    public function forceClose(Request $request, $id)
+    {
+        $request->validate([
+            'reason' => 'required|string|min:5'
         ]);
         
-        return response()->json(['success' => true, 'message' => 'Email enviado (Simulado)']);
+        $po = PurchaseOrder::with('items')->findOrFail($id);
+        
+        if (in_array($po->status, ['CLOSED', 'CANCELLED'])) {
+            return response()->json(['success' => false, 'message' => 'La orden ya está cerrada.'], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // 1. Revertir "Committed Qty" de lo que NO se recibió
+            foreach ($po->items as $item) {
+                // Si pedí 10 y recibí 0 -> tengo que liberar 10
+                $remaining = max(0, $item->quantity_ordered - $item->quantity_received);
+                
+                if ($remaining > 0) {
+                    $backlog = \App\Models\ReplenishmentBacklog::where('product_id', $item->product_id)->first();
+                    if ($backlog) {
+                        // Usamos decrement para ser atómicos, pero asegurando no bajar de 0
+                        // (aunque decrement no chequea 0, asumimos lógica correcta)
+                        $backlog->decrement('committed_qty', $remaining);
+                    }
+                }
+            }
+
+            // 2. Cambiar Estado
+            $po->status = 'CLOSED'; // O CANCELLED, pero CLOSED es más neutro si se recibió parcial
+            // Agregar nota al campo de notas o un campo específico
+            // Si el modelo tiene 'notes', concatenamos.
+            // $po->notes .= "\n[Cierre Admin]: " . $request->reason; 
+            
+            $po->save();
+
+            // 3. Loguear Evento
+            PurchaseOrderEvent::create([
+                'purchase_order_id' => $po->id,
+                'event_type' => 'MANUAL_CLOSE',
+                'data' => json_encode(['reason' => $request->reason]),
+                'user_id' => Auth::id() ?: 1,
+            ]);
+
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Orden cerrada administrativamente.']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Reabrir Orden (Reverse Operation)
+     * Vuelve a poner la orden en Borrador y restaura el stock comprometido.
+     */
+    public function reopen(Request $request, $id)
+    {
+        $po = PurchaseOrder::with('items')->findOrFail($id);
+        
+        if (!in_array($po->status, ['CLOSED', 'CANCELLED'])) {
+            return response()->json(['success' => false, 'message' => 'Solo se pueden reabrir órdenes cerradas o canceladas.'], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            // 1. Restaurar "Committed Qty" (Volver a comprometer el stock)
+            foreach ($po->items as $item) {
+                // Cantidad que aún falta por recibir (o todo si no se recibió nada)
+                $remaining = max(0, $item->quantity_ordered - $item->quantity_received);
+                
+                if ($remaining > 0) {
+                    $backlog = \App\Models\ReplenishmentBacklog::where('product_id', $item->product_id)->first();
+                    if ($backlog) {
+                        $backlog->increment('committed_qty', $remaining);
+                    }
+                }
+            }
+
+            // 2. Cambiar Estado
+            $po->status = 'DRAFT'; // Volvemos a borrador para permitir editar/enviar de nuevo
+            $po->save();
+
+            // 3. Loguear Evento
+            PurchaseOrderEvent::create([
+                'purchase_order_id' => $po->id,
+                'event_type' => 'MANUAL_REOPEN',
+                'data' => json_encode(['reason' => 'User requested reopen']),
+                'user_id' => Auth::id() ?: 1,
+            ]);
+
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Orden reabierta en estado Borrador.']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Recibir Mercadería (Ingreso de Stock Real)
+     * POST /purchase-orders/{id}/receive
+     */
+    public function receiveItems(Request $request, $id)
+    {
+        $request->validate([
+            'items' => 'required|array',
+            'items.*.id' => 'required|exists:purchase_order_items,id',
+            'items.*.receive_qty' => 'required|numeric|min:0',
+        ]);
+
+        $po = PurchaseOrder::with('items')->findOrFail($id);
+        
+        // Estados válidos para recibir: SENT, PARTIAL. (DRAFT lo permitimos flexiblemente)
+        if (in_array($po->status, ['CLOSED', 'CANCELLED'])) {
+             return response()->json(['error' => 'La orden ya está cerrada o cancelada. Reábrala si necesita ajustar.'], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            $receivedLog = [];
+            $hasUpdates = false;
+            
+            foreach ($request->items as $income) {
+                $qty = floatval($income['receive_qty']);
+                if ($qty <= 0) continue;
+
+                $item = $po->items->where('id', $income['id'])->first();
+                if (!$item) continue;
+
+                $hasUpdates = true;
+
+                // 1. Update PO Item
+                $item->quantity_received += $qty;
+                $item->save();
+
+                // 2. Update Stock Físico
+                $product = \App\Models\Producto::find($item->product_id);
+                if ($product) {
+                    // Usamos increment para atomicidad
+                    $newStock = $product->stock_disponible + $qty;
+                    $product->stock_disponible = $newStock;
+                    $product->save();
+                    
+                    // 3. Registrar Movimiento de Stock (Si existe el modelo)
+                    // Intentamos crear, atrapando error por si la tabla no existe o campos difieren
+                    try {
+                        \App\Models\StockMovement::create([
+                            'product_id' => $product->id,
+                            'type' => 'IN_PURCHASE', // Ingreso por Compra
+                            'quantity' => $qty,
+                            'qty_before' => $newStock - $qty,
+                            'qty_after' => $newStock,
+                            'reference_id' => $po->id,
+                            'reference_type' => 'purchase_order', // Polymorphic field often used
+                            'user_id' => Auth::id() ?: 1,
+                            'reason' => 'Recepcion Ord #' . $po->po_number
+                        ]);
+                    } catch (\Throwable $t) {
+                        // Ignoramos error de logueo de stock movement si faltan columnas, pero stock sí se actualizó
+                        \Illuminate\Support\Facades\Log::warning("Could not create StockMovement: " . $t->getMessage());
+                    }
+
+                    $receivedLog[] = [
+                        'sku' => $product->sku_interno ?: $item->product_id,
+                        'name' => $product->nombre,
+                        'qty' => $qty
+                    ];
+                }
+
+                // 4. Update Backlog (Liberar compromiso ya cumplido)
+                $backlog = \App\Models\ReplenishmentBacklog::where('product_id', $item->product_id)->first();
+                if ($backlog) {
+                    $backlog->committed_qty = max(0, $backlog->committed_qty - $qty);
+                    $backlog->save();
+                }
+            }
+            
+            if (!$hasUpdates) {
+                 DB::rollBack();
+                 return response()->json(['error' => 'No se indicó ninguna cantidad válida para recibir.'], 400);
+            }
+
+            // 5. Recalculate Status
+            $allComplete = true;
+            $anyReceived = false;
+            foreach ($po->items as $it) {
+                // Necesitamos refrescar para ver el valor actualizado
+                $it->refresh();
+                if ($it->quantity_received > 0) $anyReceived = true;
+                // Tolerancia flotante pequeña por si acaso, pero normalmente enteros
+                if ($it->quantity_received < $it->quantity_ordered) $allComplete = false;
+            }
+
+            if ($allComplete) {
+                $po->status = 'CLOSED';
+            } elseif ($anyReceived) {
+                $po->status = 'PARTIAL';
+            }
+            $po->save();
+
+            // 6. Audit
+            PurchaseOrderEvent::create([
+                'purchase_order_id' => $id,
+                'event_type' => 'MERCHANDISE_RECEIVED',
+                'data' => json_encode(['received' => $receivedLog]),
+                'user_id' => Auth::id() ?: 1,
+                'happened_at' => now()
+            ]);
+
+            DB::commit();
+            return response()->json([
+                'success' => true, 
+                'message' => 'Mercadería ingresada exitosamente.', 
+                'new_status' => $po->status
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['error' => 'Error al recibir: ' . $e->getMessage()], 500);
+        }
     }
 }

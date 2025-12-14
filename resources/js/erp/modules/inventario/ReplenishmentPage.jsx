@@ -79,6 +79,31 @@ export const ReplenishmentPage = () => {
         }
     };
 
+    const handleCancelRun = async (runId) => {
+        if (!confirm('¿Seguro de CANCELAR este borrador de reposición? Se eliminará y tendrá que generar uno nuevo.')) return;
+        
+        try {
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const res = await fetch(`/erp/api/inventory/replenishment/runs/${runId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': token || ''
+                }
+            });
+            const json = await res.json();
+            if (json.success) {
+                alert('Reposición cancelada.');
+                loadData();
+            } else {
+                alert('Error: ' + json.message);
+            }
+        } catch (e) {
+            alert('Error de red');
+        }
+    };
+
     return (
         <div className="p-6 h-full flex flex-col bg-slate-50 dark:bg-slate-900">
             <div className="mb-6 flex justify-between items-center">
@@ -120,12 +145,17 @@ export const ReplenishmentPage = () => {
                                 </Link>
                             )}
                             
-                            <button 
-                                onClick={() => handleCloseRun(draftRun.id)}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow text-sm font-bold"
-                            >
-                                ✅ Cerrar Reposición
-                            </button>
+                            <div className="text-xs text-slate-500 max-w-[200px] text-right bg-slate-50 p-2 rounded border border-slate-200">
+                                <span className="block font-bold text-slate-700 mb-1">¿Cómo cerrar?</span>
+                                Genera la Orden de Compra desde <Link to="/compras" className="text-indigo-600 font-bold hover:underline">Solicitudes</Link> y el ciclo se cerrará automáticamente.
+                                
+                                <button 
+                                    onClick={() => handleCancelRun(draftRun.id)}
+                                    className="mt-3 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded block w-full text-center border border-red-100"
+                                >
+                                    Cancelar / Eliminar Borrador
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

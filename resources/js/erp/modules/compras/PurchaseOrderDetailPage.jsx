@@ -8,6 +8,202 @@ const STATUS_MAP = {
     'CANCELLED': { label: 'CANCELADA', color: 'bg-red-100 text-red-800 border-red-200' },
 };
 
+// Modal de Envío de Email Profesional
+const EmailModal = ({ isOpen, onClose, defaultEmail, onSubmit, loading }) => {
+    const [email, setEmail] = useState(defaultEmail || '');
+    const [subject, setSubject] = useState('Nueva Orden de Compra');
+    const [message, setMessage] = useState('Adjunto encontrará la orden de compra solicitada. Quedamos a la espera de la confirmación.');
+
+    useEffect(() => {
+        if(isOpen) {
+             setEmail(defaultEmail || '');
+        }
+    }, [isOpen, defaultEmail]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 print:hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg border border-slate-200 dark:border-slate-700 overflow-hidden transform transition-all scale-100 animate-in fade-in zoom-in duration-200">
+                {/* Header Discreto */}
+                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
+                    <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                        <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        Enviar Orden al Proveedor
+                    </h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors text-xl leading-none">&times;</button>
+                </div>
+                
+                <div className="p-6 space-y-4">
+                    {/* To */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Para (Email Proveedor)</label>
+                        <input 
+                            type="email" 
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm text-slate-900 dark:text-white"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            placeholder="proveedor@ejemplo.com"
+                        />
+                    </div>
+                    
+                    {/* Subject */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Asunto</label>
+                        <input 
+                            type="text" 
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm text-slate-900 dark:text-white"
+                            value={subject}
+                            onChange={e => setSubject(e.target.value)}
+                        />
+                    </div>
+
+                    {/* Body */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Mensaje / Aclaraciones</label>
+                        <textarea 
+                            rows={5}
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm resize-none text-slate-900 dark:text-white"
+                            value={message}
+                            onChange={e => setMessage(e.target.value)}
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1 text-right">Se incluirá un resumen de la orden automáticamente.</p>
+                    </div>
+                </div>
+
+                {/* Footer Actions */}
+                <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
+                    <button 
+                        onClick={onClose}
+                        disabled={loading}
+                        className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={() => onSubmit({ email, subject, message })}
+                        disabled={loading || !email}
+                        className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {loading ? 'Enviando...' : (
+                            <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                Enviar Correo
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ReceiveModal = ({ isOpen, onClose, items, onSubmit, loading }) => {
+    const [createMap, setCreateMap] = useState({});
+
+    // Resetear al abrir
+    useEffect(() => {
+        if (isOpen && items) {
+            // Inicializamos con el remanente (Ordered - Received)
+            const initial = {};
+            items.forEach(item => {
+                const remaining = Math.max(0, item.quantity_ordered - item.quantity_received);
+                initial[item.id] = remaining; // Por defecto asumimos llegada completa de lo restante
+            });
+            setCreateMap(initial);
+        }
+    }, [isOpen, items]);
+
+    const handleQtyChange = (id, val) => {
+        setCreateMap(prev => ({ ...prev, [id]: val }));
+    };
+
+    const handleSubmit = () => {
+        // Filtramos solo los que tienen > 0
+        const payload = [];
+        Object.keys(createMap).forEach(key => {
+            const val = parseFloat(createMap[key]);
+            if (val > 0) {
+                payload.push({ id: parseInt(key), receive_qty: val });
+            }
+        });
+        
+        if (payload.length === 0) return alert("Ingrese al menos una cantidad mayor a 0.");
+        
+        onSubmit(payload);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 print:hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl border border-slate-200 dark:border-slate-700 overflow-hidden transform transition-all scale-100 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
+                    <h3 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2 text-lg">
+                        <svg className="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                        Recibir Mercadería (Ingreso a Stock)
+                    </h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors text-xl leading-none">&times;</button>
+                </div>
+
+                <div className="flex-1 overflow-auto p-0">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 dark:bg-slate-700 text-xs uppercase text-slate-500 sticky top-0">
+                            <tr>
+                                <th className="px-4 py-3">Producto</th>
+                                <th className="px-4 py-3 text-right">Solicitado</th>
+                                <th className="px-4 py-3 text-right">Ya Recibido</th>
+                                <th className="px-4 py-3 text-center bg-emerald-50 dark:bg-emerald-900/20 border-l border-emerald-100 w-40">A Ingresar HOY</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            {items.map(item => {
+                                const remaining = Math.max(0, item.quantity_ordered - item.quantity_received);
+                                const currentInput = createMap[item.id] ?? 0;
+                                const isFulfilled = remaining === 0;
+
+                                return (
+                                    <tr key={item.id} className={isFulfilled ? "bg-slate-50 opacity-60" : ""}>
+                                        <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
+                                            {item.product_name}
+                                            <div className="text-xs text-slate-400 font-mono">{item.product_sku}</div>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">{item.quantity_ordered}</td>
+                                        <td className="px-4 py-3 text-right text-indigo-600 font-bold">{item.quantity_received}</td>
+                                        <td className="px-4 py-3 text-center bg-emerald-50/50 border-l border-emerald-100">
+                                            <input 
+                                                type="number" 
+                                                min="0"
+                                                className="w-24 text-center border-slate-300 rounded focus:ring-emerald-500 focus:border-emerald-500 font-bold text-slate-800"
+                                                value={currentInput}
+                                                onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                                                onFocus={(e) => e.target.select()}
+                                            />
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3 shrink-0">
+                    <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                    <button 
+                        onClick={handleSubmit} 
+                        disabled={loading}
+                        className="px-6 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+                    >
+                        {loading ? 'Procesando...' : 'Confirmar Ingreso'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const PurchaseOrderDetailPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -17,6 +213,14 @@ const PurchaseOrderDetailPage = () => {
 
     // Estados de edición local
     const [edits, setEdits] = useState({});
+    
+    // Email Modal State
+    const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+    const [sendingEmail, setSendingEmail] = useState(false);
+
+    // Receive Modal State
+    const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+    const [receiving, setReceiving] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -25,15 +229,44 @@ const PurchaseOrderDetailPage = () => {
     const loadData = () => {
         setLoading(true);
         fetch(`/erp/api/purchase-orders/${id}`)
-        // Agregamos timestamp para evitar cache
-        .then(r => r.json())
-        .then(data => {
-            setPo(data);
-            setEdits({});
-        })
-        .catch(console.error)
-        .finally(() => setLoading(false));
+           .then(r => r.json())
+           .then(data => {
+               if(data.error) alert(data.error);
+               else setPo(data);
+           })
+           .catch(e => console.error(e))
+           .finally(() => setLoading(false));
     };
+
+    const handleReceiveClick = () => setIsReceiveModalOpen(true);
+
+    const handleSubmitReceive = (itemsPayload) => {
+         setReceiving(true);
+         const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+         
+         fetch(`/erp/api/purchase-orders/${id}/receive`, {
+             method: 'POST',
+             headers: {
+                 'Accept': 'application/json',
+                 'Content-Type': 'application/json',
+                 'X-CSRF-TOKEN': token || ''
+             },
+             body: JSON.stringify({ items: itemsPayload })
+         })
+         .then(r => r.json())
+         .then(res => {
+             if(res.success) {
+                 alert(res.message);
+                 setIsReceiveModalOpen(false);
+                 loadData();
+             } else {
+                 alert(res.error || res.message);
+             }
+         })
+         .catch(e => alert("Error de red: " + e))
+         .finally(() => setReceiving(false));
+    };
+
 
     const handleQtyChange = (itemId, newQty) => {
         if (newQty < 0) return;
@@ -43,32 +276,25 @@ const PurchaseOrderDetailPage = () => {
         }));
     };
 
-    const handleDeleteItem = (itemId) => {
-        if(!confirm('¿Eliminar este ítem de la orden? La cantidad pendiente volverá a sugerirse en futuras reposiciones.')) return;
-        
-        setEdits(prev => ({
-            ...prev,
-            [itemId]: { ...prev[itemId], delete: true }
-        }));
-        
-        // Auto-save inmediato para delete
-        saveChanges([{ id: itemId, delete: true }]);
+    const handleMarkDelete = (itemId) => {
+        setEdits(prev => {
+            const current = prev[itemId] || {};
+            return {
+                ...prev,
+                [itemId]: { ...current, delete: !current.delete }
+            };
+        });
     };
     
     const handleSave = () => {
-         // Convertir edits object a array
-         const itemsToUpdate = Object.keys(edits).map(itemId => ({
-             id: itemId,
-             ...edits[itemId]
-         }));
-         
-         if(itemsToUpdate.length === 0) return;
-         saveChanges(itemsToUpdate);
-    };
-
-    const saveChanges = (itemsPayload) => {
-        setSaving(true);
         const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        setSaving(true);
+        
+        // Prepare payload
+        const itemsToUpdate = Object.keys(edits).map(itemId => ({
+            id: itemId,
+            ...edits[itemId]
+        }));
         
         fetch(`/erp/api/purchase-orders/${id}`, {
             method: 'PATCH',
@@ -76,13 +302,14 @@ const PurchaseOrderDetailPage = () => {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': token || ''
             },
-            body: JSON.stringify({ items: itemsPayload })
+            body: JSON.stringify({ items: itemsToUpdate })
         })
         .then(r => r.json())
         .then(res => {
             if(res.error) alert(res.error);
             else {
-                loadData(); // Recargar para confirmar cambios
+                setEdits({});
+                loadData(); 
             }
         })
         .finally(() => setSaving(false));
@@ -92,22 +319,115 @@ const PurchaseOrderDetailPage = () => {
         window.print();
     };
     
-    const handleEmail = () => {
+    const handleEmailClick = () => {
+        setIsEmailModalOpen(true);
+    };
+
+    const handleSendEmail = (data) => {
         const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-        if(!confirm('¿Enviar Orden de Compra por email al proveedor?')) return;
+        setSendingEmail(true);
         
-        fetch(`/erp/api/purchase-orders/${id}/email`,{ method: 'POST', headers: {'X-CSRF-TOKEN': token || ''} })
+        fetch(`/erp/api/purchase-orders/${id}/email`,{ 
+            method: 'POST', 
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': token || ''
+            },
+            body: JSON.stringify(data)
+        })
             .then(r => r.json())
             .then(res => {
+                if(res.success) {
+                    alert(res.message);
+                    setIsEmailModalOpen(false);
+                    loadData();
+                } else {
+                    alert('Error: ' + (res.message || res.error));
+                }
+            })
+            .finally(() => setSendingEmail(false));
+    };
+
+    const handleReopen = () => {
+        if(!confirm('¿Seguro de REABRIR esta orden?\n\n- Pasará a estado BORRADOR.\n- Se VOLVERÁ A COMPROMETER el stock pendiente.\n- Podrás editarla y volver a enviarla.')) return;
+
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        setSaving(true);
+        fetch(`/erp/api/purchase-orders/${id}/reopen`, {
+             method: 'POST',
+             headers: {'X-CSRF-TOKEN': token || ''}
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.error) alert(res.error || res.message);
+            else {
                 alert(res.message);
                 loadData();
-            });
+            }
+        })
+        .finally(() => setSaving(false));
+    };
+    
+    const handleForceClose = () => {
+        const reason = prompt("CIERRE ADMINISTRATIVO Y MANUAL:\n\nEsta acción cerrará la orden y liberará el stock pendiente que no haya ingresado.\n\nIngrese el motivo OBLIGATORIO (Ej: 'Proveedor canceló', 'Compra externa'):");
+        
+        if (reason === null) return; // Cancelado
+        if (!reason || reason.trim().length < 5) return alert('Debe especificar un motivo válido (mínimo 5 caracteres) para la trazabilidad.');
+
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        
+        // Mostrar Loading
+        setSaving(true);
+
+        fetch(`/erp/api/purchase-orders/${id}/close`, {
+             method: 'POST',
+             headers: {
+                 'Content-Type': 'application/json',
+                 'Accept': 'application/json',
+                 'X-CSRF-TOKEN': token || ''
+             },
+             body: JSON.stringify({ reason })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.error) alert(res.error || res.message);
+            else {
+                alert(res.message);
+                loadData();
+            }
+        })
+        .finally(() => setSaving(false));
+    };
+
+    const handleDeleteOrder = () => {
+        if(!confirm('ATENCIÓN: ¿Estás seguro de ELIMINAR esta orden permanentemente?\n\nEsta acción revertirá las cantidades "en espera" (backlog) de los productos y eliminará el registro.\n\nEsta acción NO se puede deshacer.')) return;
+        
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        fetch(`/erp/api/purchase-orders/${id}`, { 
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': token || '',
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.error) {
+                alert('Error: ' + res.error);
+            } else {
+                alert(res.message || 'Orden eliminada.');
+                navigate('/compras/ordenes');
+            }
+        })
+        .catch(err => alert('Error de red al intentar eliminar.'));
     };
 
     if(loading) return <div className="p-10 text-center">Cargando Orden...</div>;
     if(!po) return <div className="p-10 text-center text-red-500">Orden no encontrada.</div>;
 
     const isDraft = po.status === 'DRAFT';
+    const isClosed = po.status === 'CLOSED' || po.status === 'CANCELLED';
     const hasPendingEdits = Object.keys(edits).length > 0;
 
     // Status Badge
@@ -195,15 +515,47 @@ const PurchaseOrderDetailPage = () => {
                 </div>
                 
                 <div className="flex gap-2 print:hidden">
+                    {!isDraft && !isClosed && (
+                        <button 
+                            onClick={handleForceClose} 
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded shadow text-sm font-medium"
+                            title="Forzar Cierre Administrativo: Usa esto si la orden no se va a completar."
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                            Cerrar Orden
+                        </button>
+                    )}
+                    {isClosed && (
+                        <button 
+                            onClick={handleReopen} 
+                            className="flex items-center gap-2 px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 border border-yellow-300 rounded shadow text-sm font-medium"
+                            title="Deshacer cierre y volver a Borrador"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            Reabrir
+                        </button>
+                    )}
                     <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded shadow hover:bg-gray-50 text-gray-700 text-sm font-medium">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                        Exportar / PDF
+                        Exportar
                     </button>
                     {isDraft && (
-                        <button onClick={handleEmail} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow text-sm font-medium">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                            Enviar a Proveedor
-                        </button>
+                        <>
+                            <button onClick={handleDeleteOrder} className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 border border-red-200 rounded shadow text-sm font-medium" title="Eliminar Orden y revertir stock">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                Eliminar
+                            </button>
+                            <button onClick={handleEmailClick} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow text-sm font-medium">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                Enviar a Proveedor
+                            </button>
+                            {!isClosed && !isCancelled && (
+                                <button onClick={handleReceiveClick} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow text-sm font-bold">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                                    Recibir Mercadería
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
             </div>
@@ -324,6 +676,22 @@ const PurchaseOrderDetailPage = () => {
             </div>
             
             </div> {/* Cierre invoice-print-area */}
+            
+            <EmailModal 
+                isOpen={isEmailModalOpen} 
+                onClose={() => setIsEmailModalOpen(false)} 
+                defaultEmail={po.supplier?.email || ''} 
+                onSubmit={handleSendEmail} 
+                loading={sendingEmail} 
+            />
+
+            <ReceiveModal
+                isOpen={isReceiveModalOpen}
+                onClose={() => setIsReceiveModalOpen(false)}
+                items={po.items || []}
+                onSubmit={handleSubmitReceive}
+                loading={receiving}
+            />
         </div>
     );
 };

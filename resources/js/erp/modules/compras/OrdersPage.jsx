@@ -3,10 +3,11 @@ import React, { useEffect, useState } from 'react';
 const ReceiveModal = ({ order, onClose, onSuccess }) => {
     const [items, setItems] = useState(
         order.items?.map(i => ({ 
+            id: i.id, // ID del item pivote
             product_id: i.product_id, 
-            name: i.product?.nombre,
+            name: i.product?.nombre || i.product_name,
             qty_pending: i.quantity_ordered - i.quantity_received, 
-            qty_to_receive: i.quantity_ordered - i.quantity_received 
+            qty_to_receive: Math.max(0, i.quantity_ordered - i.quantity_received)
         })) || []
     );
 
@@ -16,14 +17,20 @@ const ReceiveModal = ({ order, onClose, onSuccess }) => {
         const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
         const payload = {
-            received_items: items.map(m => ({ product_id: m.product_id, qty: Number(m.qty_to_receive) }))
+            items: items.filter(m => m.qty_to_receive > 0).map(m => ({ 
+                id: m.id, 
+                receive_qty: Number(m.qty_to_receive) 
+            }))
         };
         
+        if (payload.items.length === 0) return alert("Ingrese al menos una cantidad.");
+
         try {
-            const resp = await fetch(`/erp/api/purchases/orders/${order.id}/receive`, {
+            const resp = await fetch(`/erp/api/purchase-orders/${order.id}/receive`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
                     'X-CSRF-TOKEN': token || ''
                 },
                 body: JSON.stringify(payload)
@@ -34,7 +41,7 @@ const ReceiveModal = ({ order, onClose, onSuccess }) => {
                 onSuccess();
                 onClose();
             } else {
-                alert('Error: ' + JSON.stringify(res));
+                alert('Error: ' + (res.message || res.error || 'Desconocido'));
             }
         } catch (e) {
             console.error(e);
@@ -111,10 +118,11 @@ export const OrdersPage = () => {
     const handleOpenReceive = async (id) => {
         // Fetch full detail with items
         try {
-            const resp = await fetch(`/erp/api/purchases/orders/${id}`);
+            const resp = await fetch(`/erp/api/purchase-orders/${id}`);
+            if(!resp.ok) throw new Error('Error fetch');
             const data = await resp.json();
             setSelectedOrder(data);
-        } catch(e) { alert('Error cargando detalle'); }
+        } catch(e) { alert('Error cargando detalle: ' + e.message); }
     };
 
     return (

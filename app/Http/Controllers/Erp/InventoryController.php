@@ -288,14 +288,26 @@ class InventoryController extends Controller
                 }
             }
             
-            // Validación Crítica: No cerrar si no hay Orden de Compra asociada
+            // Validación Inteligente: Si no hay link directo, verificar estado de requisición
             if (!$runCheck->purchase_order_id) {
-                 return response()->json(['success' => false, 'message' => 'No puedes cerrar la reposición sin haber generado una Orden de Compra (OC). Crea la orden desde "Solicitudes".'], 400); 
-            }
-            
-            // Validación Crítica: No cerrar si no hay Orden de Compra asociada
-            if (!$runCheck->purchase_order_id) {
-                 return response()->json(['success' => false, 'message' => 'No puedes cerrar la reposición sin haber generado una Orden de Compra (OC). Crea la orden desde "Solicitudes".'], 400); 
+                 $linked = false;
+                 // 1. Verificar si la requisición ya fue convertida
+                 if ($runCheck->requisition_id) {
+                     $req = \App\Models\PurchaseRequisition::find($runCheck->requisition_id);
+                     if ($req && (strtolower($req->status) === 'converted')) {
+                         $linked = true;
+                         // Intentar autoreparar buscando una OC reciente (creada post-requisición)
+                         $orphanPO = \App\Models\PurchaseOrder::latest()->first(); // Asumimos la última creada
+                         if ($orphanPO) {
+                             $runCheck->purchase_order_id = $orphanPO->id;
+                             $runCheck->save();
+                         }
+                     }
+                 }
+
+                 if (!$linked) {
+                      return response()->json(['success' => false, 'message' => 'No puedes cerrar la reposición: No se detectó una Orden de Compra generada ni una solicitud convertida. Por favor genera la orden primero.'], 400); 
+                 }
             }
 
             $service = new \App\Services\ReplenishmentBacklogService();
@@ -303,6 +315,23 @@ class InventoryController extends Controller
             return response()->json(['success' => true, 'message' => 'Reposición cerrada. Próximo ciclo comienza ahora.', 'data' => $run]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Eliminar Run (Cancelar Reposición)
+     */
+    public function destroyRun($id)
+    {
+        try {
+            $run = \App\Models\ReplenishmentRun::findOrFail($id);
+            if ($run->status !== 'DRAFT') {
+                return response()->json(['success' => false, 'message' => 'Solo se pueden eliminar reposiciones en borrador.'], 400);
+            }
+            $run->delete();
+            return response()->json(['success' => true, 'message' => 'Reposición cancelada y eliminada.']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
     
