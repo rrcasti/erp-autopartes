@@ -218,6 +218,20 @@ Route::middleware('auth')->group(function () {
                 ]);
             });
 
+            // --------------------
+            // Caja Diaria (Daily Cash Box)
+            // --------------------
+            Route::prefix('cash')->group(function () {
+                Route::get('/current', [\App\Http\Controllers\Erp\CashController::class, 'current']);
+                Route::post('/open', [\App\Http\Controllers\Erp\CashController::class, 'open']);
+                Route::post('/close', [\App\Http\Controllers\Erp\CashController::class, 'close']);
+                Route::post('/movements', [\App\Http\Controllers\Erp\CashController::class, 'storeMovement']); // Create manual
+                Route::get('/history', [\App\Http\Controllers\Erp\CashController::class, 'history']);
+                Route::get('/{id}', [\App\Http\Controllers\Erp\CashController::class, 'show']);
+                Route::get('/{id}/movements', [\App\Http\Controllers\Erp\CashController::class, 'movements']);
+                Route::get('/{id}/print', [\App\Http\Controllers\Erp\CashController::class, 'printClosure']);
+            });
+
         });
 
         // Rutas Web ERP (Print, Exports, etc)

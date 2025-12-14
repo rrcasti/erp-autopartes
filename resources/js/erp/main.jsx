@@ -14,6 +14,7 @@ import { PurchasesModulePage } from './modules/compras/PurchasesModulePage';
 import { SoldTodayPage } from './modules/inventario/SoldTodayPage';
 import { ReplenishmentPage } from './modules/inventario/ReplenishmentPage';
 import { UsersPage } from './modules/usuarios/UsersPage';
+import { CashPage } from './modules/caja/CashPage';
 
 const Placeholder = ({ title }) => (
     <div className="flex h-full items-center justify-center text-slate-400">
@@ -52,10 +53,12 @@ const ErpRoutes = () => (
             {/* Compras */}
             <Route path="/compras/*" element={<PurchasesModulePage />} />
 
+            {/* Caja y Gastos */}
+            <Route path="/caja-gastos" element={<CashPage />} />
+
             {/* Rutas Placeholder para secciones futuras */}
             <Route path="/clientes" element={<Placeholder title="Clientes y Talleres" />} />
             <Route path="/cuentas-corrientes" element={<Placeholder title="Cuentas Corrientes" />} />
-            <Route path="/caja" element={<Placeholder title="Caja y Gastos" />} />
             
             {/* Catch-all para sub-rutas no definidas */}
             <Route path="*" element={<Placeholder title="Página No Encontrada" />} />
