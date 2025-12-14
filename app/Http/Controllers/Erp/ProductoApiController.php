@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Producto;
 use App\Models\Vehiculo;
 use App\Models\Marca;
-use App\Models\Sku;
+use App\Models\VehiculoMarca;
+use App\Models\VehiculoModelo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ProductoApiController extends Controller
 {
@@ -44,7 +47,6 @@ class ProductoApiController extends Controller
                 if ($anio = $request->input('anio')) {
                     $q->where(function ($filter) use ($anio) {
                         // Caso A: Rango Estándar (Tiene Fin o es 'Hasta Hoy' = 0)
-                        // Valida que el año buscado esté entre Desde y Hasta
                         $filter->where(function($w) use ($anio) {
                             $w->whereNotNull('anio_desde')
                               ->where('anio_desde', '>', 0)
@@ -55,8 +57,6 @@ class ProductoApiController extends Controller
                               });
                         })
                         // Caso B: Rango "Solo Año" (Fin es NULL)
-                        // Asumimos que si no tiene fin, es válido SOLO para el año de inicio exacto.
-                        // Esto permite encontrar "Falcon 1980" buscando 1980, pero no buscado 2025.
                         ->orWhere(function($w) use ($anio) {
                             $w->whereNotNull('anio_desde')
                               ->whereNull('anio_hasta')
@@ -64,7 +64,6 @@ class ProductoApiController extends Controller
                         });
                     });
                 }
-
 
                 // Motor
                 if ($motor = $request->input('motor')) {
@@ -77,7 +76,6 @@ class ProductoApiController extends Controller
                 $q->where('vehiculo_marca_id', $idMarca);
             });
         }
-
 
         // Filtro por Marca de PRODUCTO (no vehículo)
         if ($marcaId = $request->input('marca_id')) {
@@ -116,28 +114,20 @@ class ProductoApiController extends Controller
             'descripcion_corta' => 'nullable|string',
             'marca_id'          => 'nullable|integer|exists:marcas,id',
             'proveedor_id'      => 'nullable|integer|exists:proveedores,id',
-            
-            // Precios
             'precio_lista'      => 'nullable|numeric|min:0',
             'precio_oferta'     => 'nullable|numeric|min:0',
             'moneda'            => 'required|in:ARS,USD',
-            
-            // Costos
             'costo_promedio'      => 'nullable|numeric|min:0',
             'costo_ultima_compra' => 'nullable|numeric|min:0',
-            
-            // Impuestos
             'alicuota_iva'      => 'required|numeric|min:0',
-            
-            // Flags
             'stock_controlado'  => 'boolean',
             'stock_disponible'  => 'nullable|numeric|min:0',
             'activo'            => 'boolean',
         ]);
 
-        // Generar SKU si no viene
+        // Generar SKU Incremental RP-XXXXXX
         if (empty($data['sku_interno'])) {
-            $data['sku_interno'] = Sku::generate('RP'); 
+            $data['sku_interno'] = $this->generateNextSku();
         }
 
         // Slug
@@ -145,7 +135,10 @@ class ProductoApiController extends Controller
 
         $producto = Producto::create($data);
 
-        return response()->json($producto, 201);
+        // Detección automática de vehículos compatibles
+        $this->autoLinkVehicles($producto);
+
+        return response()->json($producto->load(['marca', 'proveedor', 'vehiculos.marca', 'vehiculos.modelo']), 201);
     }
 
     /**
@@ -168,16 +161,12 @@ class ProductoApiController extends Controller
             'descripcion_corta' => 'nullable|string',
             'marca_id'          => 'nullable|integer|exists:marcas,id',
             'proveedor_id'      => 'nullable|integer|exists:proveedores,id',
-            
             'precio_lista'      => 'nullable|numeric|min:0',
             'precio_oferta'     => 'nullable|numeric|min:0',
             'moneda'            => 'required|in:ARS,USD',
-            
             'costo_promedio'      => 'nullable|numeric|min:0',
             'costo_ultima_compra' => 'nullable|numeric|min:0',
-            
             'alicuota_iva'      => 'required|numeric|min:0',
-            
             'stock_controlado'  => 'boolean',
             'stock_disponible'  => 'nullable|numeric|min:0',
             'activo'            => 'boolean',
@@ -185,11 +174,13 @@ class ProductoApiController extends Controller
 
         if ($data['nombre'] !== $producto->nombre) {
              $data['slug'] = $this->generateSlug($data['nombre'], $producto->id);
+             // Opcional: ¿Re-detectar vehículos al cambiar nombre?
+             // Por seguridad, no borramos lo existente, solo podríamos agregar nuevos.
         }
 
         $producto->update($data);
 
-        return response()->json($producto);
+        return response()->json($producto->load(['marca', 'proveedor', 'vehiculos.marca', 'vehiculos.modelo']));
     }
 
     /**
@@ -215,14 +206,12 @@ class ProductoApiController extends Controller
             'observacion' => 'nullable|string|max:255'
         ]);
 
-        // Evitar duplicados
         if (!$producto->vehiculos()->where('vehiculo_id', $req['vehiculo_id'])->exists()) {
             $producto->vehiculos()->attach($req['vehiculo_id'], [
-                'observacion' => $req['observacion'] ?? null
+                'observacion' => isset($req['observacion']) ? $req['observacion'] : null
             ]);
         }
 
-        // Devolver lista actualizada
         return response()->json([
             'status' => 'ok', 
             'vehiculos' => $producto->load('vehiculos.marca','vehiculos.modelo')->vehiculos
@@ -236,30 +225,118 @@ class ProductoApiController extends Controller
     }
 
     // --- Auxiliar Slug ---
-
     private function generateSlug($nombre, $ignoreId = null)
     {
-        $slug = Str::slug($nombre);
-        $original = $slug;
-        $i = 1;
+        return Str::slug($nombre);
+    }
+
+    // --- Auxiliar SKU Incremental ---
+    private function generateNextSku()
+    {
+        // 1. Intentar encontrar el último SKU para partir de ahí (Usando DB directa para evitar scopes ocultos)
+        $last = DB::table('productos')
+            ->where('sku_interno', 'like', 'RP-%')
+            ->orderByRaw('LENGTH(sku_interno) desc')
+            ->orderBy('sku_interno', 'desc')
+            ->first();
+
+        $number = 1;
+        if ($last && preg_match('/RP-(\d+)/', $last->sku_interno, $matches)) {
+            $number = intval($matches[1]) + 1;
+        }
+
+        // 2. Loop de seguridad para garantizar unicidad
+        $sku = 'RP-' . str_pad($number, 6, '0', STR_PAD_LEFT);
         
-        // Verificar unicidad básica (aunque slug no es unique en DB, es buena práctica)
-        // Aquí simplificamos
-        return $slug;
+        // Verificación directa en BD
+        while (DB::table('productos')->where('sku_interno', $sku)->exists()) {
+            $number++;
+            $sku = 'RP-' . str_pad($number, 6, '0', STR_PAD_LEFT);
+        }
+
+        return $sku;
+    }
+
+    // --- Auxiliar Detección Automática de Vehículos ---
+    private function autoLinkVehicles(Producto $product)
+    {
+        try {
+            $name = strtolower($product->nombre);
+        
+        // 1. Detectar Marca
+        $brands = VehiculoMarca::where('activo', true)->get();
+        $foundBrand = null;
+        
+        foreach($brands as $b) {
+            if (str_contains($name, strtolower($b->nombre))) {
+                $foundBrand = $b;
+                break; // Asumimos la primera marca encontrada
+            }
+        }
+        
+        if (!$foundBrand) return;
+
+        // 2. Detectar Modelo
+        $models = VehiculoModelo::where('vehiculo_marca_id', $foundBrand->id)->where('activo', true)->get();
+        $foundModel = null;
+        
+        foreach($models as $m) {
+            if (str_contains($name, strtolower($m->nombre))) {
+                $foundModel = $m;
+                break; 
+            }
+        }
+
+        if (!$foundModel) return;
+
+        // 3. Detectar Año (YYYY)
+        preg_match_all('/\b(19|20)\d{2}\b/', $name, $matches);
+        $detectedYears = $matches[0];
+        
+        // 4. Buscar Vehículos compatibles
+        $query = Vehiculo::where('vehiculo_marca_id', $foundBrand->id)
+                    ->where('vehiculo_modelo_id', $foundModel->id);
+        
+        $vehicles = collect();
+        
+        if (!empty($detectedYears)) {
+             // Si encontramos años, buscamos vehículos que cubran ese año
+             $year = intval($detectedYears[0]);
+             
+             // Clonamos query base para no afectar el fallback
+             $qYear = clone $query;
+             $qYear->where(function($q) use ($year) {
+                 $q->where('anio_desde', '<=', $year)
+                   ->where(function($end) use ($year) {
+                       $end->where('anio_hasta', '>=', $year)->orWhereNull('anio_hasta')->orWhere('anio_hasta', 0);
+                   });
+             });
+             
+             $vehicles = $qYear->limit(5)->get();
+        }
+
+        // Fallback: Si no se encontró nada por año (o no hubo año), traer vehículos del modelo sin filtro de año
+        if ($vehicles->isEmpty()) {
+            $vehicles = $query->limit(5)->get();
+        } 
+
+        if ($vehicles->isNotEmpty()) {
+            $product->vehiculos()->syncWithoutDetaching($vehicles->pluck('id'));
+        }
+        
+        } catch (\Exception $e) {
+            Log::error("Error en autoLinkVehicles para producto {$product->id}: " . $e->getMessage());
+        }
     }
 
     /**
-     * Listado de Marcas de Productos (ej: Bosch, SKF, etc).
-     * Distinto a las marcas de vehículos.
+     * Listado de Marcas de Productos.
      */
     public function marcas()
     {
         return Marca::orderBy('nombre')->get(['id', 'nombre']);
     }
     
-    /**
-     * Crear una nueva marca de Producto al vuelo.
-     */
     public function storeMarca(Request $request)
     {
         $data = $request->validate([
@@ -268,11 +345,12 @@ class ProductoApiController extends Controller
         
         $marca = Marca::create([
             'nombre' => $data['nombre'],
-            'slug'   => \Illuminate\Support\Str::slug($data['nombre'])
+            'slug'   => Str::slug($data['nombre'])
         ]);
         
         return response()->json($marca, 201);
     }
+
     public function familias()
     {
         return \App\Models\FamiliaProducto::orderBy('nombre')->get(['id', 'nombre']);

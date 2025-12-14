@@ -22,7 +22,8 @@ class StockService
         // Fallback a tabla producto si no hay balance aún (migración progresiva)
         if (!$balance) {
             $prod = Producto::find($productId);
-            return $prod ? ($prod->stock_disponible ?? 0) : 0;
+            // Si tiene stock_minimo, deberíamos considerarlo? No, aquí es disponible real.
+            return $prod ? (isset($prod->stock_disponible) ? $prod->stock_disponible : 0) : 0;
         }
 
         return $balance->on_hand - $balance->reserved;
@@ -41,7 +42,6 @@ class StockService
                 $p = Producto::where('sku_interno', $item->sku)->first();
                 if ($p) {
                     $productId = $p->id;
-                    // Opcional: Actualizar el sale_item con el ID encontrado
                     $item->producto_id = $p->id;
                     $item->save();
                 }
@@ -50,18 +50,29 @@ class StockService
             if (!$productId) continue;
 
             $qty = $item->cantidad;
-            // Asumimos variation_id null por ahora si no viene en item
             $variationId = null; 
 
-            // Usemos lock para consistencia
-            // 1. Obtener o crear Balance
-            $balance = StockBalance::firstOrCreate(
-                ['product_id' => $productId, 'variation_id' => $variationId, 'warehouse_id' => $warehouseId],
-                ['on_hand' => 0, 'reserved' => 0]
-            );
+            // 1. Obtener o crear Balance SIN reiniciar a 0 si existe en producto
+            $balance = StockBalance::where('product_id', $productId)
+                ->where('variation_id', $variationId)
+                ->where('warehouse_id', $warehouseId)
+                ->first();
+
+            if (!$balance) {
+                // Si no existe balance, lo inicializamos con el stock del producto "legacy"
+                $prod = Producto::find($productId);
+                $initialStock = $prod ? (isset($prod->stock_disponible) ? $prod->stock_disponible : 0) : 0;
+
+                $balance = StockBalance::create([
+                    'product_id' => $productId,
+                    'variation_id' => $variationId,
+                    'warehouse_id' => $warehouseId,
+                    'on_hand' => $initialStock, // <--- CLAVE: Inicializar con lo que tenga el producto
+                    'reserved' => 0
+                ]);
+            }
 
             $before = $balance->on_hand;
-            // Si queremos permitir negativo temporalmente:
             $after = $before - $qty;
 
             // 2. Actualizar Balance
@@ -73,20 +84,20 @@ class StockService
                 'product_id' => $productId,
                 'variation_id' => $variationId,
                 'warehouse_id' => $warehouseId,
-                'user_id' => $user ? $user->id : 1, // Default admin
+                'user_id' => $user ? $user->id : 1, 
                 'type' => 'SALE',
                 'quantity' => -1 * abs($qty),
                 'qty_before' => $before,
                 'qty_after' => $after,
                 'sale_id' => $sale->id,
-                'reference_description' => "Venta #" . ($sale->receipt_number ?? $sale->id),
-                'unit_cost_snapshot' => 0, // TODO: Implementar Costo Promedio Ponderado
+                'reference_description' => "Venta #" . ((isset($sale->receipt_number) && $sale->receipt_number) ? $sale->receipt_number : $sale->id),
+                'unit_cost_snapshot' => 0, 
                 'happened_at' => now(),
             ]);
 
-            // 4. Actualizar modelo legacy para compatibilidad UI actual
+            // 4. Actualizar modelo legacy para mantener UI sincronizada
             $prod = Producto::find($productId);
-            if ($prod /* && $prod->stock_controlado */) {
+            if ($prod) {
                  $prod->stock_disponible = $after;
                  $prod->save();
             }

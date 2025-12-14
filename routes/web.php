@@ -18,23 +18,7 @@ Route::get('/', function () {
 
 // RUTA TEMPORAL DE FIX COLUMNA (Borrar tras usar)
 // RUTA TEMPORAL DE FIX COLUMNA (Borrar tras usar)
-Route::get('/fix-db-column', function () {
-    try {
-        // Intento directo con SQL crudo (MySQL)
-        // Ignoramos error si ya existe (Duplicate column name)
-        \Illuminate\Support\Facades\DB::statement("
-            ALTER TABLE productos 
-            ADD COLUMN proveedor_id BIGINT UNSIGNED NULL AFTER marca_id,
-            ADD INDEX (proveedor_id);
-        ");
-        return "Columna proveedor_id AGREGADA con éxito (SQL RAW).";
-    } catch (\Exception $e) {
-        if (strpos($e->getMessage(), 'Duplicate column name') !== false) {
-            return "La columna proveedor_id YA EXISTE (Detectado por error duplicate).";
-        }
-        return "Error SQL: " . $e->getMessage();
-    }
-});
+
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
@@ -153,6 +137,15 @@ Route::middleware('auth')->group(function () {
 
         // Rutas Web ERP (Print, Exports, etc)
         Route::get('/pos/print/{id}', [\App\Http\Controllers\Erp\PosController::class, 'printReceipt'])->name('pos.print');
+
+        Route::get('/debug-tables', function() {
+            return response()->json([
+                'vehiculo_marcas' => \Illuminate\Support\Facades\Schema::hasTable('vehiculo_marcas'),
+                'vehiculo_modelos' => \Illuminate\Support\Facades\Schema::hasTable('vehiculo_modelos'),
+                'vehiculos' => \Illuminate\Support\Facades\Schema::hasTable('vehiculos'),
+                'producto_vehiculo' => \Illuminate\Support\Facades\Schema::hasTable('producto_vehiculo'),
+            ]);
+        });
 
         // SPA shell (Catch-all for React Router) - DEFINE LAST
         Route::get('/{any?}', function () {
