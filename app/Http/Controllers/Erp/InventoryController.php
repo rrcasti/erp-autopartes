@@ -29,11 +29,11 @@ class InventoryController extends Controller
             $toRestock = 0;
             try {
                 // Intentamos usar la columna stock_minimo (si existe)
-                $toRestock = Producto::whereRaw('stock_disponible <= COALESCE(stock_minimo, 3)')
+                $toRestock = Producto::whereRaw('stock_disponible <= COALESCE(stock_minimo, 2)')
                     ->count();
             } catch (QueryException $e) {
-                // Error 1054: Unknown column. Fallback a estático 3.
-                $toRestock = Producto::where('stock_disponible', '<=', 3)->count();
+                // Error 1054: Unknown column. Fallback a estático 2.
+                $toRestock = Producto::where('stock_disponible', '<=', 2)->count();
             }
 
             // Valor Inventario
@@ -94,17 +94,14 @@ class InventoryController extends Controller
                         $query->where('stock_disponible', '<=', 0);
                         break;
                     case 'low':
-                        $query->whereRaw('stock_disponible <= COALESCE(stock_minimo, 3)');
+                        $query->whereRaw('stock_disponible <= COALESCE(stock_minimo, 2)');
                         break;
                     case 'normal':
-                        $query->whereRaw('stock_disponible > COALESCE(stock_minimo, 3)');
+                        $query->whereRaw('stock_disponible > COALESCE(stock_minimo, 2)');
                         break;
                 }
             } else {
-                // Si no hay filtro, ordenamos, pero si pedimos 'min' en el select podría fallar si forzamos select explícito.
-                // Eloquent hace "select *" por defecto, así que si la columna no está, no falla HASTA que accedemos o filtramos por ella? 
-                // No, "select *" trae todo, si la columna no esta, simplemente no viene. 
-                // Pero el WhereRaw SÍ falla si no esta.
+                // Si no hay filtro, ordenamos
             }
 
             $products = $query->orderBy('nombre')->paginate(50);
@@ -120,10 +117,10 @@ class InventoryController extends Controller
                         $query->where('stock_disponible', '<=', 0);
                         break;
                     case 'low':
-                        $query->where('stock_disponible', '<=', 3); // Hardcoded 3
+                        $query->where('stock_disponible', '<=', 2); // Hardcoded 2
                         break;
                     case 'normal':
-                        $query->where('stock_disponible', '>', 3); // Hardcoded 3
+                        $query->where('stock_disponible', '>', 2); // Hardcoded 2
                         break;
                 }
             }
@@ -134,7 +131,7 @@ class InventoryController extends Controller
             
             // Determinamos el mínimo efectivo
             // Si estamos en fallback, la columna podría no existir en el modelo, y acceder a $p->stock_minimo devolvería null silent.
-            $effectiveMin = 3;
+            $effectiveMin = 2; // Default 2
             if (!$usingFallback && !is_null($p->stock_minimo)) {
                  $effectiveMin = $p->stock_minimo;
             }

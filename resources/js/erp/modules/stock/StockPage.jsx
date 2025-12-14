@@ -233,9 +233,9 @@ export const StockPage = () => {
                                         {tab === 'balances' ? (
                                             <>
                                                 <td className="px-6 py-3">
-                                                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${Number(row.on_hand) <= 0 ? 'bg-red-500' : Number(row.on_hand) < (row.min || 3) ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+                                                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${Number(row.on_hand) <= 0 ? 'bg-red-500' : Number(row.on_hand) <= 2 ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
                                                     <span className="ml-2 text-xs text-slate-500 capitalize">
-                                                        {Number(row.on_hand) <= 0 ? 'Agotado' : Number(row.on_hand) < (row.min || 3) ? 'Bajo' : 'Normal'}
+                                                        {Number(row.on_hand) <= 0 ? 'Agotado' : Number(row.on_hand) <= 2 ? 'Por Reponer' : 'Normal'}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-3">
