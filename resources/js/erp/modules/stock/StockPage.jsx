@@ -1,5 +1,63 @@
+// ... (imports remain)
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+
+// Simple Modal Component
+const AdjustModal = ({ isOpen, onClose, product, onSubmit, loading }) => {
+    const [qty, setQty] = useState('');
+
+    useEffect(() => {
+        if (isOpen && product) {
+            setQty(product.on_hand);
+        }
+    }, [isOpen, product]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-md p-6 border border-slate-200 dark:border-slate-700">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">
+                    Ajustar Stock: {product.product.nombre}
+                </h3>
+                
+                <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        Cantidad Real (Conteo Físico)
+                    </label>
+                    <input 
+                        type="number" 
+                        value={qty}
+                        onChange={e => setQty(e.target.value)}
+                        className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-lg font-bold"
+                        step="1"
+                    />
+                    <p className="text-xs text-slate-500 mt-2">
+                        El sistema calculará la diferencia y creará un movimiento de ajuste automático.
+                    </p>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                    <button 
+                        onClick={onClose}
+                        className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded text-sm font-medium"
+                        disabled={loading}
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={() => onSubmit(qty)}
+                        disabled={loading || qty === ''}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium shadow-sm disabled:opacity-50"
+                    >
+                        {loading ? 'Guardando...' : 'Confirmar Ajuste'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const Tabs = ({ active, onChange, tabs }) => (
     <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 mb-6">
@@ -37,9 +95,13 @@ export const StockPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState(''); // '' | 'critical' | 'low' | 'normal'
-
+    const [statusFilter, setStatusFilter] = useState(''); 
     const [stats, setStats] = useState({});
+
+    // Modal State
+    const [adjustModalOpen, setAdjustModalOpen] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [saving, setSaving] = useState(false);
     
     // Fetch estadísticas generales
     const fetchStats = async () => {
@@ -105,8 +167,51 @@ export const StockPage = () => {
         }
     };
 
+    const handleAdjustClick = (product) => {
+        setSelectedProduct(product);
+        setAdjustModalOpen(true);
+    };
+
+    const handleAdjustSubmit = async (newQty) => {
+        setSaving(true);
+        try {
+            const res = await fetch('/erp/api/inventory/adjust', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                },
+                body: JSON.stringify({
+                    product_id: selectedProduct.id,
+                    new_quantity: newQty,
+                    reason: 'Ajuste manual desde panel de Stock'
+                })
+            });
+
+            if (!res.ok) throw new Error('Error al guardar ajuste');
+            
+            setAdjustModalOpen(false);
+            fetchData(); // Recargar datos
+            fetchStats(); // Recargar KPIs
+
+        } catch (error) {
+            alert("Error al guardar: " + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
         <div className="bg-slate-50 dark:bg-slate-900 p-6 h-full flex flex-col">
+            <AdjustModal 
+                isOpen={adjustModalOpen} 
+                onClose={() => setAdjustModalOpen(false)}
+                product={selectedProduct}
+                onSubmit={handleAdjustSubmit}
+                loading={saving}
+            />
+
             <div className="flex justify-between items-start mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Centro de Control de Stock</h1>
@@ -233,9 +338,9 @@ export const StockPage = () => {
                                         {tab === 'balances' ? (
                                             <>
                                                 <td className="px-6 py-3">
-                                                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${Number(row.on_hand) <= 0 ? 'bg-red-500' : Number(row.on_hand) <= 2 ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
+                                                    <span className={`inline-block w-2.5 h-2.5 rounded-full ${Number(row.on_hand) <= 1 ? 'bg-red-500' : Number(row.on_hand) <= 2 ? 'bg-amber-400' : 'bg-emerald-400'}`}></span>
                                                     <span className="ml-2 text-xs text-slate-500 capitalize">
-                                                        {Number(row.on_hand) <= 0 ? 'Agotado' : Number(row.on_hand) <= 2 ? 'Por Reponer' : 'Normal'}
+                                                        {Number(row.on_hand) <= 0 ? 'Agotado' : Number(row.on_hand) <= 1 ? 'Crítico' : Number(row.on_hand) <= 2 ? 'Por Reponer' : 'Normal'}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-3">
@@ -243,14 +348,17 @@ export const StockPage = () => {
                                                     <div className="text-xs font-mono text-slate-500">{row.product?.sku_interno || 'S/N'}</div>
                                                 </td>
                                                 <td className="px-6 py-3 text-right">
-                                                    <span className={`text-lg font-bold font-mono ${Number(row.on_hand) <= 0 ? 'text-red-500' : ''}`}>{row.on_hand}</span>
+                                                    <span className={`text-lg font-bold font-mono ${Number(row.on_hand) <= 1 ? 'text-red-500' : ''}`}>{row.on_hand}</span>
                                                     <span className="text-xs text-slate-400 ml-1">unid.</span>
                                                 </td>
                                                 <td className="px-6 py-3 text-right text-slate-500 font-mono">
                                                     0
                                                 </td>
                                                 <td className="px-6 py-3 text-center">
-                                                    <button className="text-blue-600 hover:text-blue-800 text-xs font-semibold uppercase tracking-wider px-2 py-1 border border-blue-200 rounded hover:bg-blue-50">
+                                                    <button 
+                                                        onClick={() => handleAdjustClick(row)}
+                                                        className="text-blue-600 hover:text-blue-800 text-xs font-semibold uppercase tracking-wider px-2 py-1 border border-blue-200 rounded hover:bg-blue-50 transition-colors"
+                                                    >
                                                         Ajustar
                                                     </button>
                                                 </td>

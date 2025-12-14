@@ -16,8 +16,42 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-// RUTA TEMPORAL DE FIX COLUMNA (Borrar tras usar)
-// RUTA TEMPORAL DE FIX COLUMNA (Borrar tras usar)
+// RUTA TEMPORAL FIX DB RUNS
+Route::get('/fix-db-runs', function () {
+    try {
+        // Forzar borrado para reparar
+        \Illuminate\Support\Facades\Schema::dropIfExists('replenishment_runs');
+
+        \Illuminate\Support\Facades\Schema::create('replenishment_runs', function ($table) {
+            $table->id();
+            $table->string('run_type', 50)->default('AUTO_REPLENISHMENT');
+            $table->string('status', 20)->default('DRAFT');
+            $table->dateTime('from_at');
+            $table->dateTime('to_at');
+            $table->unsignedBigInteger('generated_by');
+            $table->timestamp('generated_at')->useCurrent();
+            $table->unsignedBigInteger('closed_by')->nullable();
+            $table->timestamp('closed_at')->nullable();
+            $table->unsignedBigInteger('requisition_id')->nullable();
+            $table->integer('suppliers_count')->default(0);
+            $table->integer('items_count')->default(0);
+            $table->text('notes')->nullable();
+            $table->timestamps();
+            
+            $table->index(['run_type', 'status', 'generated_at'], 'run_idx');
+            $table->index('requisition_id');
+        });
+        return "Tabla recreada con éxito. Ya puedes usar el sistema.";
+    } catch (\Exception $e) {
+        return "Error: " . $e->getMessage();
+    }
+});
+
+// La ruta de reparación ha sido eliminada. Usar .\runphp.bat reparar_tablas.php si es necesario.
+
+
+
+// RUTA TEMPORAL DE FIX COLUMNA (YA EJECUTADO)
 
 Route::get('/dashboard', function () {
     return view('dashboard');
@@ -73,7 +107,7 @@ Route::middleware('auth')->group(function () {
             // Mantenemos ambos por si el frontend llama a alguno específico, aunque idealmente deberíamos unificar.
             // Por consistencia con ProductoApiController@vehiculos que añadimos en paso previo:
             // Route::get('/productos/{producto}/vehiculos', [ProductoApiController::class, 'vehiculos']); 
-            // ELIMINADO duplicado, el de arriba vale si existe el controller. Pero espera, en pasos anteriores usé ProductoApiController para vehiculos.
+
             // Para no romper nada de lo que acabo de escribir en ProductoApiController, usaré sus métodos.
             
             Route::get('/productos/{producto}/vehiculos-list', [ProductoApiController::class, 'vehiculos']); // Renombrado para evitar conflicto ruta
@@ -120,18 +154,39 @@ Route::middleware('auth')->group(function () {
             Route::get('/inventory/stats', [\App\Http\Controllers\Erp\InventoryController::class, 'stats']);
             Route::get('/inventory/balances', [\App\Http\Controllers\Erp\InventoryController::class, 'balances']);
             Route::get('/inventory/movements', [\App\Http\Controllers\Erp\InventoryController::class, 'movements']);
-            Route::get('/inventory/sold-today', [\App\Http\Controllers\Erp\InventoryController::class, 'soldTodayItems']);
+            Route::get('/inventory/sold-today', [\App\Http\Controllers\Erp\InventoryController::class, 'soldTodayItems']); // Restaurada
             Route::post('/inventory/requisitions/generate', [\App\Http\Controllers\Erp\InventoryController::class, 'generateRequisition']);
+            
+            // Runs de Reposición (Nuevo Sistema)
+            Route::get('/inventory/replenishment/runs', [\App\Http\Controllers\Erp\InventoryController::class, 'listReplenishmentRuns']);
+            Route::post('/inventory/replenishment/runs/generate', [\App\Http\Controllers\Erp\InventoryController::class, 'generateReplenishmentRun']);
+            Route::post('/inventory/replenishment/runs/{id}/close', [\App\Http\Controllers\Erp\InventoryController::class, 'closeReplenishmentRun']);
+            
+            Route::post('/inventory/adjust', [\App\Http\Controllers\Erp\InventoryController::class, 'adjustStock']);
 
             // --------------------
             // Compras
             // --------------------
+            // Ruta vieja (comentada para evitar conflicto)
+            // Route::get('/purchases/requisitions', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexRequisitions']);
+            // Route::get('/purchases/requisitions/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'showRequisition']);
+            // Route::post('/purchases/requisitions/{id}/convert', [\App\Http\Controllers\Erp\PurchasesController::class, 'generateOrderFromRequisition']);
+            // Route::get('/purchases/orders', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexOrders']);
+            // Route::get('/purchases/orders/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'showOrder']);
+            // Route::post('/purchases/orders/{id}/receive', [\App\Http\Controllers\Erp\PurchasesController::class, 'receiveOrder']); 
+
+            // Se mantienen activas las rutas de PurchasesController para READ (listados) que ya arreglamos, pero las de acciones (POST) se anulan en favor del nuevo controlador.
+            // Reactivamos SOLO las de lectura corregidas:
             Route::get('/purchases/requisitions', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexRequisitions']);
             Route::get('/purchases/requisitions/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'showRequisition']);
-            Route::post('/purchases/requisitions/{id}/convert', [\App\Http\Controllers\Erp\PurchasesController::class, 'generateOrderFromRequisition']);
-            Route::get('/purchases/orders', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexOrders']);
-            Route::get('/purchases/orders/{id}', [\App\Http\Controllers\Erp\PurchasesController::class, 'showOrder']);
-            Route::post('/purchases/orders/{id}/receive', [\App\Http\Controllers\Erp\PurchasesController::class, 'receiveOrder']);
+            Route::get('/purchases/orders', [\App\Http\Controllers\Erp\PurchasesController::class, 'indexOrders']); // Esta ya la corregimos para leer DB real
+            
+            // --- NUEVO SISTEMA DE ORDENES DE COMPRA REAL ---
+            Route::post('/purchase-orders/from-requisition/{requisitionId}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'createFromRequisition']);
+            Route::get('/purchase-orders/{id}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'show']);
+            Route::patch('/purchase-orders/{id}', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'update']);
+            Route::post('/purchase-orders/{id}/export', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'export']);
+            Route::post('/purchase-orders/{id}/email', [\App\Http\Controllers\Erp\PurchaseOrderController::class, 'sendEmail']);
 
         });
 

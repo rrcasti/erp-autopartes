@@ -12,6 +12,7 @@ import { MostradorPage } from './modules/mostrador/MostradorPage';
 import { StockPage } from './modules/stock/StockPage';
 import { PurchasesModulePage } from './modules/compras/PurchasesModulePage';
 import { SoldTodayPage } from './modules/inventario/SoldTodayPage';
+import { ReplenishmentPage } from './modules/inventario/ReplenishmentPage';
 
 const Placeholder = ({ title }) => (
     <div className="flex h-full items-center justify-center text-slate-400">
@@ -42,6 +43,7 @@ const ErpRoutes = () => (
             {/* Gestión Actual de Stock */}
             <Route path="/stock" element={<StockPage />} />
             <Route path="/inventario/vendido-hoy" element={<SoldTodayPage />} />
+            <Route path="/inventario/reposicion" element={<ReplenishmentPage />} />
 
             {/* Compras */}
             <Route path="/compras/*" element={<PurchasesModulePage />} />

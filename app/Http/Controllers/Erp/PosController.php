@@ -159,6 +159,15 @@ class PosController extends Controller
                 'description' => "Venta #$posNumber",
             ]);
 
+            // 5b. Reposición Automática (Backlog)
+            try {
+                $replenishmentObj = new \App\Services\ReplenishmentBacklogService();
+                $replenishmentObj->incrementFromSale($sale, Auth::user());
+            } catch (\Exception $e) {
+                // No detener venta si falla repo automatic
+                \Illuminate\Support\Facades\Log::error("Error Backlog Repo: " . $e->getMessage());
+            }
+
             // 6. Generar Datos de Respuesta (Print & WhatsApp)
             // IMPORTANTE: Cargar items recién creados para que aparezcan en el mensaje
             $sale->load('items');

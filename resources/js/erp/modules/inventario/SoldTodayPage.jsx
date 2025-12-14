@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export const SoldTodayPage = () => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
 
     const loadData = () => {
         setLoading(true);
@@ -15,32 +17,9 @@ export const SoldTodayPage = () => {
 
     useEffect(() => { loadData(); }, []);
 
-    const handleCreateRequisition = async () => {
-        if (!confirm('¿Generar requisición para reponer TODOS los ítems de esta lista?')) return;
-        
-        try {
-            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-            // Agrupar por proveedor en backend o frontend? 
-            // Para MVP, mandamos request de "reponer ventas de hoy"
-            // Pero el endpoint espera otra cosa? Hagamos loop simple o un endpoint dedicado.
-            // step 2085: InventoryController generateRequisition
-            
-            // Construir payload
-            const payload = {
-                items: items.map(i => ({ product_id: i.product_id, qty: i.sold_qty }))
-            };
-
-            const res = await fetch('/erp/api/inventory/requisitions/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token || '' },
-                body: JSON.stringify(payload)
-            });
-            const json = await res.json();
-            
-            if (res.ok) alert(`Requisición generada con éxito (ID: ${json.requisition_id})`);
-            else alert('Error: ' + json.message);
-
-        } catch(e) { alert('Error de red'); }
+    const handleCreateRequisition = () => {
+        // Redirigimos al panel de gestión de RUNS
+        navigate('/inventario/reposicion');
     };
 
     return (

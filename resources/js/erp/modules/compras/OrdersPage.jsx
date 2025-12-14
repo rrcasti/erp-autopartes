@@ -138,12 +138,19 @@ export const OrdersPage = () => {
                           orders.length === 0 ? <tr><td colSpan="6" className="p-12 text-center text-slate-400">No hay órdenes generadas.</td></tr> :
                           orders.map(o => (
                               <tr key={o.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-                                  <td className="px-6 py-3 font-mono text-xs font-bold">OC-{o.id}</td>
+                                  <td className="px-6 py-3 font-mono text-xs font-bold">{o.po_number || `OC-${o.id}`}</td>
                                   <td className="px-6 py-3">{new Date(o.issued_at).toLocaleDateString()}</td>
-                                  <td className="px-6 py-3 font-medium">{o.supplier?.razon_social}</td>
-                                  <td className="px-6 py-3 font-mono text-slate-900 dark:text-white">${o.total}</td>
-                                  <td className="px-6 py-3 text-xs uppercase font-bold tracking-wider">{o.status}</td>
-                                  <td className="px-6 py-3 text-right">
+                                  <td className="px-6 py-3 font-medium">{o.supplier?.razon_social || 'Desconocido'}</td>
+                                  <td className="px-6 py-3 font-mono text-slate-900 dark:text-white">${o.total_amount || 0}</td>
+                                  <td className="px-6 py-3 text-xs uppercase font-bold tracking-wider text-slate-500">{o.status}</td>
+                                  <td className="px-6 py-3 text-right flex justify-end gap-2">
+                                      <a 
+                                          href={`/erp/compras/ordenes/${o.id}`}
+                                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded shadow flex items-center"
+                                      >
+                                          Ver Detalle
+                                      </a>
+
                                       {o.status !== 'received' && (
                                           <button 
                                               onClick={() => handleOpenReceive(o.id)}

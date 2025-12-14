@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { RequisitionsPage } from './RequisitionsPage';
 import { OrdersPage } from './OrdersPage';
+import RequisitionDetailPage from './RequisitionDetailPage';
+import PurchaseOrderDetailPage from './PurchaseOrderDetailPage';
 
 export const PurchasesModulePage = () => {
     const location = useLocation();
@@ -28,8 +30,8 @@ export const PurchasesModulePage = () => {
             {/* Header / Tabs */}
             <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                  <div className="flex max-w-2xl mx-auto">
-                    <TabLink to="/erp/compras/solicitudes" label="Solicitudes & Reposición" />
-                    <TabLink to="/erp/compras/ordenes" label="Órdenes de Compra" />
+                    <TabLink to="/compras/solicitudes" label="Solicitudes & Reposición" />
+                    <TabLink to="/compras/ordenes" label="Órdenes de Compra" />
                  </div>
             </div>
 
@@ -38,7 +40,9 @@ export const PurchasesModulePage = () => {
                 <Routes>
                     <Route path="/" element={<Navigate to="solicitudes" replace />} />
                     <Route path="solicitudes" element={<RequisitionsPage />} />
+                    <Route path="solicitudes/:id" element={<RequisitionDetailPage />} />
                     <Route path="ordenes" element={<OrdersPage />} />
+                    <Route path="ordenes/:id" element={<PurchaseOrderDetailPage />} />
                 </Routes>
             </div>
         </div>

@@ -14,26 +14,60 @@ class PurchasesController extends Controller
 
     public function indexRequisitions()
     {
-        // Listar requisiciones
-        $reqs = PurchaseRequisition::with('user')->latest()->get();
-        
-        // Mapear para frontend
-        $data = $reqs->map(function($r) {
-            return [
-                'id' => $r->id,
-                'created_at' => $r->created_at,
-                'expected_total' => 0, // Calcular si hay precios
-                'status' => $r->status, // draft, approved, converted
-                'supplier' => null // TODO: Relation
-            ];
-        });
-        
-        return response()->json(['data' => $data]);
+        \Illuminate\Support\Facades\Log::info("INDEX REQUISITIONS HIT");
+        try {
+            // Listar requisiciones
+            $reqs = PurchaseRequisition::with('creator')->latest()->get();
+            \Illuminate\Support\Facades\Log::info("Requisitions found: " . $reqs->count());
+            
+            // Mapear para frontend
+            $data = $reqs->map(function($r) {
+                return [
+                    'id' => $r->id,
+                    'created_at' => $r->created_at,
+                    'expected_total' => 0, 
+                    'status' => $r->status,
+                    'supplier' => null,
+                    'created_by_name' => $r->creator ? $r->creator->name : 'Sistema'
+                ];
+            });
+            
+            return response()->json(['data' => $data]);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("INDEX REQ ERROR: " . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     public function showRequisition($id)
     {
-        $req = PurchaseRequisition::with('items.product')->findOrFail($id);
+        // Cargar items, producto y la relación de precios/códigos de proveedor
+        $req = PurchaseRequisition::with(['items.product.productosProveedores'])->findOrFail($id);
+        
+        // Transformar items para facilitar consumo en frontend
+        $req->items->transform(function($item) {
+            $prod = $item->product;
+            
+            // Intentar buscar el código de proveedor específico si existe
+            $supplierCode = '-';
+            if ($prod && $prod->productosProveedores) {
+                 // Tomamos el primero disponible
+                 $pivot = $prod->productosProveedores->first();
+                 if ($pivot) {
+                     $supplierCode = !empty($pivot->codigo_producto) ? $pivot->codigo_producto : '-';
+                 }
+            }
+
+            // Inyectar datos planos al item para el frontend
+            // Usamos 'sku_interno' ya que 'sku' no existe en el modelo Producto
+            $item->product_sku = $prod ? $prod->sku_interno : 'N/A';
+            // Nombre existe como 'nombre'
+            $item->product_name = $prod ? $prod->nombre : 'Producto no encontrado (ID: '.$item->product_id.')';
+            $item->supplier_code = $supplierCode;
+            
+            return $item;
+        });
+
         return response()->json($req);
     }
     
@@ -52,8 +86,25 @@ class PurchasesController extends Controller
     
     public function indexOrders()
     {
-        // Si no tenemos modelo Order, devolvemos array vacío
-        return response()->json(['data' => []]);
+        try {
+            $orders = \App\Models\PurchaseOrder::with(['supplier', 'creator'])->latest()->get();
+            
+            $data = $orders->map(function($o) {
+                return [
+                    'id' => $o->id,
+                    'po_number' => $o->po_number,
+                    'issued_at' => $o->issued_at,
+                    'supplier_name' => $o->supplier ? $o->supplier->nombre : 'Desconocido',
+                    'total_amount' => $o->total_amount,
+                    'status' => $o->status,
+                    'item_count' => $o->items()->count(),
+                ];
+            });
+
+            return response()->json(['data' => $data]);
+        } catch (\Exception $e) {
+             return response()->json(['data' => [], 'error' => $e->getMessage()]);
+        }
     }
 
     public function showOrder($id)

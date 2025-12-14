@@ -36,10 +36,11 @@ export const RequisitionsPage = () => {
         
         const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         
-        fetch(`/erp/api/purchases/requisitions/${id}/convert`, { 
+        fetch(`/erp/api/purchase-orders/from-requisition/${id}`, { 
             method: 'POST',
             headers: {
                  'Content-Type': 'application/json',
+                 'Accept': 'application/json', // Importante para recibir JSON en caso de error
                  'X-CSRF-TOKEN': token || ''
             }
         })
@@ -47,8 +48,11 @@ export const RequisitionsPage = () => {
         .then(res => {
             if(res.error) alert(res.error);
             else {
-                alert('Orden Generada #' + res.order_id);
+                alert('Orden Generada #' + res.po_id);
                 loadData();
+                // Navegar a la orden
+                // window.location.hash = `/compras/ordenes/${res.po_id}`; // Si usas HashRouter
+                // O via navigate si tuviera hook, pero aqui no lo tiene fácil. 
             }
         });
     };
